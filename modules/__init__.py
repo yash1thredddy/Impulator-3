@@ -26,7 +26,8 @@ from modules.utils import (
     get_available_compounds,
     zip_results,
     zip_compound_results,
-    format_smiles_for_display
+    format_smiles_for_display,
+    delete_compound
 )
 
 from modules.visualization import (

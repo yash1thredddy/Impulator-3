@@ -39,7 +39,9 @@ def init_session_state():
         "show_new_compound_alert": False,
         "selected_activity_types": ACTIVITY_TYPES,  # Default to all activity types
         "last_similarity_threshold": 80,  # Default similarity threshold
-        "molecule_viewer_tab": "3D"  # Default tab for molecule viewer
+        "molecule_viewer_tab": "3D",  # Default tab for molecule viewer
+        "show_delete_confirmation": False,  # Add this new line
+        "deletion_success": False  # Add this new line
     }
     
     for var, default in state_vars.items():
@@ -320,19 +322,65 @@ def display_home_view():
                         mime="application/zip",
                         key="download_zip_button"
                     )
-
+def display_delete_confirmation():
+    """Display confirmation dialog for compound deletion."""
+    st.markdown("### ❗ Confirm Deletion")
+    st.warning(
+        f"You are about to delete **{st.session_state.selected_compound}** and all associated data. "
+        "This action cannot be undone."
+    )
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("❌ Cancel", key="cancel_delete", use_container_width=True):
+            st.session_state.show_delete_confirmation = False
+            st.rerun()
+    
+    with col2:
+        if st.button("🗑️ Delete Permanently", key="confirm_delete", use_container_width=True):
+            with st.spinner(f"Deleting {st.session_state.selected_compound}..."):
+                # Import here to avoid circular imports
+                from modules.utils import delete_compound
+                
+                success = delete_compound(st.session_state.selected_compound)
+                
+                if success:
+                    st.session_state.deletion_success = True
+                    st.session_state.show_delete_confirmation = False
+                    st.session_state.current_view = "home"
+                    st.success(f"✅ {st.session_state.selected_compound} has been deleted successfully.")
+                    st.session_state.selected_compound = None
+                else:
+                    st.error(f"Failed to delete {st.session_state.selected_compound}. Please try again.")
+                
+                st.rerun()
+                
 def display_compound_details_view():
     """Display detailed view for a selected compound."""
     # Navigation controls
-    col1, col2 = st.columns([1, 5])
+    # Add a delete button in the top navigation
+    col1, col2, col3 = st.columns([1, 4, 1])
     with col1:
         if st.button("← Back", key="back_to_home"):
             st.session_state.current_view = "home"
             st.rerun()
-    
+
     with col2:
-        st.title(f"🔬 {st.session_state.selected_compound}")
-    
+        # Center the title using markdown with HTML
+        st.markdown(f"<h1 style='text-align: center;'>🔬 {st.session_state.selected_compound}</h1>", unsafe_allow_html=True)
+
+    with col3:
+        if st.button("🗑️ Delete", key="delete_compound_btn", type="secondary", use_container_width=True):
+            st.session_state.show_delete_confirmation = True
+            st.rerun()
+
+    # Add confirmation dialog if needed
+    if 'show_delete_confirmation' not in st.session_state:
+        st.session_state.show_delete_confirmation = False
+
+    if st.session_state.show_delete_confirmation:
+        display_delete_confirmation()
+        
     selected_compound = st.session_state.selected_compound
     # Use the directory name directly without modifying it
     compound_folder = os.path.join(RESULTS_DIR, selected_compound)
@@ -343,14 +391,15 @@ def display_compound_details_view():
     if df_results is None or df_results.empty:
         st.warning("No data available for this compound.")
         return
+    #size 
     
     # Create tabs for different sections
     tabs = st.tabs([
-        "📊 Summary", 
-        "📈 Interactive Plots", 
-        "🧪 Molecules", 
-        "📋 Data Table",
-        "⚙️ Debug"
+        "📊 **Summary**", 
+        "📈 **Interactive Plots**", 
+        "🧪 **Molecules**", 
+        "📋 **Data Table**",
+        "⚙️ **Debug**"
     ])
     
     # Summary tab

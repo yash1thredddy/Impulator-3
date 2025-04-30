@@ -36,6 +36,42 @@ def validate_smiles(smiles: str) -> bool:
     except:
         return False
 
+def delete_compound(compound_name: str) -> bool:
+    """
+    Delete a compound and all its associated files and folders.
+    
+    Args:
+        compound_name: Name of the compound to delete
+    
+    Returns:
+        bool: True if deletion was successful, False otherwise
+    """
+    try:
+        import os
+        import shutil
+        from config import RESULTS_DIR
+        import logging
+        
+        logger = logging.getLogger(__name__)
+        
+        # Get the full path to the compound folder
+        compound_folder = os.path.join(RESULTS_DIR, compound_name)
+        
+        # Check if the folder exists
+        if not os.path.exists(compound_folder):
+            logger.warning(f"Compound folder not found: {compound_folder}")
+            return False
+            
+        # Use shutil.rmtree to delete the directory and all its contents
+        shutil.rmtree(compound_folder)
+        
+        logger.info(f"Successfully deleted compound: {compound_name}")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error deleting compound {compound_name}: {str(e)}")
+        return False
+    
 def validate_compound_name(name: str) -> bool:
     """
     Validate compound name.
