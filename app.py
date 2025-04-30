@@ -158,13 +158,28 @@ def analyze_activity_cliffs(df_results):
 
 def display_home_view():
     """Display the home/landing page with compound search and listing."""
-    st.title("🔬 IMPULATOR - Compound Library")
     
+    
+    st.markdown("""
+    <style>
+    .app-title {
+        font-size: 2.2rem;
+        font-weight: 600;
+        color: #4a86e8;
+        margin-bottom: 1.5rem;
+    }
+    .subtitle {
+        font-size: 1.3rem;
+        font-weight: 400;
+        color: #7c7c7c;
+        margin-top: -1rem;
+        margin-bottom: 2rem;
+    }
+    </style>
+    <h1 class="app-title">🔬 IMPULATOR</h1>
+    <p class="subtitle">Compound Library & Analysis Tool</p>
+    """, unsafe_allow_html=True)
     # Top controls for searching and adding new compounds
-    # Replace the current search and button layout
-    col1, col2 = st.columns([3, 1])  # Current approach
-
-    # With this more compact layout:
     search_col, button_col = st.columns([4, 1])
     with search_col:
         search_query = st.text_input(
@@ -180,6 +195,7 @@ def display_home_view():
         if st.button("➕ New Compound", key="add_new_compound", use_container_width=True):
             st.session_state.current_view = "analyze"
             st.rerun()
+    
     # Get available compounds
     compounds_list = get_available_compounds()
     
@@ -200,6 +216,7 @@ def display_home_view():
     # Display compounds in a grid
     st.subheader(f"Available Compounds ({len(filtered_compounds)})")
     
+    # Add styling for consistent cards
     st.markdown("""
     <style>
     .compound-card {
@@ -209,15 +226,14 @@ def display_home_view():
     </style>
     """, unsafe_allow_html=True)
     
-    # Create a grid of compounds - 3 columns
+    # Create a grid of compounds - 4 columns
     cols = st.columns(4)
-    with st.container():
-        for i, compound in enumerate(filtered_compounds):
-            with cols[i % 4]:
-                # Add margin to create space between rows
-                with st.container(border=True):
-                    st.markdown(f"<h4 style='text-align: center; margin: 5px 0;'>{compound}</h4>", unsafe_allow_html=True)
-
+    for i, compound in enumerate(filtered_compounds):
+        with cols[i % 4]:
+            # Create a single container for the entire card with a border
+            with st.container(border=True):
+                # Compound name centered
+                st.markdown(f"<h4 style='text-align: center; margin: 5px 0;'>{compound}</h4>", unsafe_allow_html=True)
                 
                 # Try to get some basic info about the compound
                 try:
@@ -480,10 +496,11 @@ def display_analyze_view():
     with col2:
         st.title("🔬 Analyze New Compound")
     
-    # Input method selection
+    # Input method selection - keep the original horizontal radio buttons
+    st.subheader("Input Method")
     input_method = st.radio("Input Method", ["Manual", "CSV Upload"], horizontal=True)
     
-    # Configuration settings
+    # Configuration settings - maintain the original layout
     st.subheader("Configuration")
     
     col1, col2 = st.columns(2)
@@ -493,31 +510,45 @@ def display_analyze_view():
         st.session_state.last_similarity_threshold = similarity_threshold
     
     with col2:
-        # Activity type selection with improved UI
+        # Activity type selection with improved checkbox UI
         st.write("**Activity Types**")
         st.caption("Select which activity types to process. Choosing fewer types may speed up processing.")
         
-        # Use multiselect for activity types
-        selected_activity_types = st.multiselect(
-            "Select Activity Types",
-            options=ACTIVITY_TYPES,
-            default=st.session_state.selected_activity_types
-        )
+        # Create columns for checkboxes to arrange them horizontally
+        checkbox_cols = st.columns(4)  # 4 columns for the 7 activity types
+        
+        # Initialize session state for checkboxes if not already set
+        if "activity_checkboxes" not in st.session_state:
+            st.session_state.activity_checkboxes = {activity: activity in st.session_state.selected_activity_types 
+                                                  for activity in ACTIVITY_TYPES}
+        
+        # Create the checkboxes
+        selected_activities = []
+        for i, activity in enumerate(ACTIVITY_TYPES):
+            with checkbox_cols[i % 4]:
+                is_checked = st.checkbox(
+                    activity, 
+                    value=st.session_state.activity_checkboxes.get(activity, True),
+                    key=f"activity_{activity}"
+                )
+                st.session_state.activity_checkboxes[activity] = is_checked
+                if is_checked:
+                    selected_activities.append(activity)
         
         # Update session state with selected activity types
-        if selected_activity_types:
-            st.session_state.selected_activity_types = selected_activity_types
+        if selected_activities:
+            st.session_state.selected_activity_types = selected_activities
         else:
             st.warning("⚠️ Please select at least one activity type")
     
     # Manual input processing
     if input_method == "Manual":
         st.subheader("Enter Compound Information")
-        compound_name = st.text_input("Compound Name")
-        smiles = st.text_area("SMILES String")
+        compound_name = st.text_input("**Compound Name**")
+        smiles = st.text_area("**SMILES String**", height=80)
         
-        if st.button("Process Compound", key="process_single_compound", type="primary"):
-            if not selected_activity_types:
+        if st.button("Process Compound", key="process_single_compound", type="primary", use_container_width=False):
+            if not selected_activities:
                 st.error("Please select at least one activity type to process.")
                 return
             
@@ -526,7 +557,7 @@ def display_analyze_view():
                     compound_name=compound_name,
                     smiles=smiles,
                     similarity_threshold=similarity_threshold,
-                    activity_types=selected_activity_types
+                    activity_types=selected_activities
                 )
                 
                 if process_result:
@@ -549,10 +580,10 @@ def display_analyze_view():
             
             if valid and df is not None:
                 st.write("Preview of uploaded data:")
-                st.write(df.head())
+                st.dataframe(df.head())
                 
                 if st.button("Process CSV", key="process_csv_batch", type="primary"):
-                    if not selected_activity_types:
+                    if not selected_activities:
                         st.error("Please select at least one activity type to process.")
                         return
                     
@@ -560,7 +591,7 @@ def display_analyze_view():
                         success, fail = process_csv_batch(
                             df=df,
                             similarity_threshold=similarity_threshold,
-                            activity_types=selected_activity_types
+                            activity_types=selected_activities
                         )
                         
                         st.success(f"Processing completed: {success} successful, {fail} failed.")
@@ -570,10 +601,12 @@ def display_analyze_view():
                             st.session_state.current_view = "home"
                             st.rerun()
 
+
 def main():
     """Main application function with improved view routing."""
     try:
         # Initialize session state for all required variables
+        
         init_session_state()
         
         # Global progress indicator (always visible when processing)
