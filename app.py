@@ -17,7 +17,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
+st.set_page_config(layout="wide")
 # Initialize session state
 def init_session_state():
     """Initialize all session state variables."""
@@ -161,24 +161,25 @@ def display_home_view():
     st.title("🔬 IMPULATOR - Compound Library")
     
     # Top controls for searching and adding new compounds
-    col1, col2 = st.columns([3, 1])
-    
-    with col1:
-        # Search input
+    # Replace the current search and button layout
+    col1, col2 = st.columns([3, 1])  # Current approach
+
+    # With this more compact layout:
+    search_col, button_col = st.columns([4, 1])
+    with search_col:
         search_query = st.text_input(
             "Search compounds:",
             value=st.session_state.compound_search_query,
             placeholder="Enter compound name...",
-            key="compound_search"
+            key="compound_search",
+            label_visibility="collapsed"  # Hides the label
         )
         st.session_state.compound_search_query = search_query
-    
-    with col2:
-        # Button to add new compounds
-        if st.button("➕ Analyze New Compound", key="add_new_compound", use_container_width=True):
+
+    with button_col:
+        if st.button("➕ New Compound", key="add_new_compound", use_container_width=True):
             st.session_state.current_view = "analyze"
             st.rerun()
-    
     # Get available compounds
     compounds_list = get_available_compounds()
     
@@ -199,14 +200,24 @@ def display_home_view():
     # Display compounds in a grid
     st.subheader(f"Available Compounds ({len(filtered_compounds)})")
     
+    st.markdown("""
+    <style>
+    .compound-card {
+        height: 1px !important;  /* Set an appropriate fixed height */
+        overflow: hidden;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     
     # Create a grid of compounds - 3 columns
-    cols = st.columns(3)
-    for i, compound in enumerate(filtered_compounds):
-        with cols[i % 3]:
-            # Create a card-like container for each compound
-            with st.container(border=True):
-                st.markdown(f"### {compound}")
+    cols = st.columns(4)
+    with st.container():
+        for i, compound in enumerate(filtered_compounds):
+            with cols[i % 4]:
+                # Add margin to create space between rows
+                with st.container(border=True):
+                    st.markdown(f"<h4 style='text-align: center; margin: 5px 0;'>{compound}</h4>", unsafe_allow_html=True)
+
                 
                 # Try to get some basic info about the compound
                 try:
@@ -227,7 +238,7 @@ def display_home_view():
                                 # Generate the molecular image
                                 mol = Chem.MolFromSmiles(smiles)
                                 if mol:
-                                    img = Draw.MolToImage(mol, size=(250, 150))
+                                    img = Draw.MolToImage(mol, size=(350, 250))
                                     
                                     # Convert image to base64 for HTML display
                                     buffered = BytesIO()
