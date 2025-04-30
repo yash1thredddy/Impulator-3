@@ -11,3 +11,5 @@ plotly>=5.13.0
 py3Dmol>=2.0.1
 scikit-learn>=1.2.2
 statsmodels>=0.13.5
+seaborn>=0.12.2
+matplotlib>=3.7.1

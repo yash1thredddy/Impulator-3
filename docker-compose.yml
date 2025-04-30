@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  impulator:
+    build: .
+    container_name: impulator-app
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./analysis_results:/app/analysis_results
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
