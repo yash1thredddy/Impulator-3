@@ -2,7 +2,7 @@ import os
 import logging
 import streamlit as st
 import pandas as pd
-
+import json
 from config import RESULTS_DIR, ACTIVITY_TYPES
 from modules.utils import get_available_compounds, validate_csv_file, zip_results, zip_compound_results
 from modules.compound_manager import process_and_store, display_compound_summary, process_csv_batch
@@ -286,9 +286,19 @@ def display_home_view():
                         # Display other compound info
                         col1, col2 = st.columns(2)
                         with col1:
-                            if 'Molecular Weight' in df.columns:
-                                avg_mw = df['Molecular Weight'].mean()
-                                st.markdown(f"**MW:** {avg_mw:.2f}")
+                            # Try to load metadata to get similarity threshold
+                            try:
+                                metadata_file = os.path.join(RESULTS_DIR, compound, f"{compound}_metadata.json")
+                                if os.path.exists(metadata_file):
+                                    with open(metadata_file, 'r') as f:
+                                        metadata = json.load(f)
+                                        sim_threshold = metadata.get('similarity_threshold', 80)
+                                        st.markdown(f"**Sim Threshold:** {sim_threshold}%")
+                                else:
+                                    st.markdown("**Sim Threshold:** N/A")
+                            except Exception as e:
+                                logger.error(f"Error loading metadata: {str(e)}")
+                                st.markdown("**Sim Threshold:** N/A")
                         
                         with col2:
                             # Count unique ChEMBL IDs
