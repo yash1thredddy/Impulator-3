@@ -8,7 +8,7 @@ from modules.utils import get_available_compounds, validate_csv_file, zip_result
 from modules.compound_manager import process_and_store, display_compound_summary, process_csv_batch
 from modules.data_processor import load_results
 from modules.visualization import show_interactive_plots, show_molecular_structures
-from modules.molecule_viewer import molecule_viewer_app
+#from modules.molecule_viewer import molecule_viewer_app
 from modules.api_client import batch_fetch_activities
 
 # Configure logging
@@ -178,7 +178,7 @@ def display_home_view():
         margin-bottom: 2rem;
     }
     </style>
-    <h1 class="app-title">🔬 IMPULATOR</h1>
+    <h1 class="app-title">🔬 IMPs Navigator</h1>
     <p class="subtitle">Compound Library & Analysis Tool</p>
     """, unsafe_allow_html=True)
     # Top controls for searching and adding new compounds
@@ -448,8 +448,15 @@ def display_compound_details_view():
     
     # Molecule viewer tab
     with tabs[2]:
-        st.sidebar.header("Molecule Visualization Settings")
-        molecule_viewer_app(compound_folder)
+        # Only show sidebar when in Molecules tab
+        from modules.molecule_viewer import molecule_viewer_app, get_molecule_style_controls
+        
+        st.subheader("🧪 Molecule Viewer")
+        style_settings = get_molecule_style_controls(show_sidebar=True)
+
+        
+        # Call the viewer with the style settings
+        molecule_viewer_app(compound_folder, style_settings)
     
     # Data table tab
     with tabs[3]:

@@ -52,10 +52,12 @@ def generate_3d_coordinates(smiles: str, optimize: bool = True) -> Optional[Chem
     except Exception as e:
         logger.error(f"Error generating 3D coordinates: {str(e)}")
         return None
-
-def get_molecule_style_controls() -> Dict:
+def get_molecule_style_controls(show_sidebar=False) -> Dict:
     """
     Create UI controls for molecule style with improved state management.
+    
+    Args:
+        show_sidebar: Whether to show controls in the sidebar or not
     
     Returns:
         Dict: Dictionary of style settings
@@ -76,6 +78,21 @@ def get_molecule_style_controls() -> Dict:
     if 'molecule_background' not in st.session_state:
         st.session_state.molecule_background = "white"
     
+    # We only show controls if requested
+    if not show_sidebar:
+        # Return default settings from session state without showing UI
+        return {
+            "style": st.session_state.molecule_style,
+            "radius": st.session_state.molecule_radius,
+            "coloring": st.session_state.molecule_coloring,
+            "background": st.session_state.molecule_background,
+            "surface": {
+                "type": st.session_state.molecule_surface_type,
+                "opacity": st.session_state.molecule_opacity
+            } if st.session_state.molecule_show_surface else None
+        }
+    
+    # Show sidebar controls
     st.sidebar.subheader("Molecule Visualization Settings")
     
     # Visualization style
@@ -157,7 +174,7 @@ def get_molecule_style_controls() -> Dict:
     st.session_state.molecule_background = background
     style_settings["background"] = background
     
-    # Add a button to apply changes - using on_click instead of experimental_rerun
+    # Add a button to apply changes
     if 'apply_style_clicked' not in st.session_state:
         st.session_state.apply_style_clicked = False
         
@@ -322,12 +339,15 @@ def view_molecule_from_smiles(
         st.error(f"Failed to generate 3D structure for SMILES: {smiles}")
 
 # Update in molecule_viewer_app function in molecule_viewer.py
-def molecule_viewer_app(compound_folder: str) -> None:
+# Modified molecule_viewer_app function in molecule_viewer.py
+
+def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = None) -> None:
     """
     Main function for the molecular viewer application.
     
     Args:
         compound_folder: Path to the compound folder
+        style_settings: Optional dictionary of style settings
     """
     try:
         structure_folder = os.path.join(compound_folder, "Structures")
@@ -344,8 +364,9 @@ def molecule_viewer_app(compound_folder: str) -> None:
             st.warning("No molecular structures available for this compound.")
             return
         
-        # Get style settings from sidebar - ADD THIS LINE
-        style_settings = get_molecule_style_controls()
+        # Use provided style settings or get default settings without showing sidebar
+        if style_settings is None:
+            style_settings = get_molecule_style_controls(show_sidebar=False)
         
         # Main content area
         col1, col2 = st.columns([1, 2])
@@ -401,7 +422,7 @@ def molecule_viewer_app(compound_folder: str) -> None:
                 view_molecule_from_smiles(
                     mol_data['SMILES'],
                     height=500,
-                    style_settings=style_settings,  # PASS STYLE SETTINGS HERE
+                    style_settings=style_settings,
                     optimize=True
                 )
             else:
@@ -410,7 +431,7 @@ def molecule_viewer_app(compound_folder: str) -> None:
                 if os.path.exists(pdb_path):
                     with open(pdb_path, 'r') as f:
                         pdb_block = f.read()
-                    view_molecule_3d(pdb_block, height=500, style_settings=style_settings)  # PASS STYLE SETTINGS HERE
+                    view_molecule_3d(pdb_block, height=500, style_settings=style_settings)
                 else:
                     st.warning("3D structure model not available. Try regenerating from SMILES.")
     
