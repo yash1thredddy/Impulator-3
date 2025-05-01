@@ -179,7 +179,7 @@ def display_home_view():
     }
     </style>
     <h1 class="app-title">🔬 IMPs Navigator</h1>
-    <p class="subtitle">Compound Library & Analysis Tool</p>
+    <p class="subtitle">Compound Library & Analysis Tool for better Insights</p>
     """, unsafe_allow_html=True)
     # Top controls for searching and adding new compounds
     search_col, button_col = st.columns([4, 1])
