@@ -5,7 +5,6 @@ import os
 import logging
 import zipfile
 import time
-from typing import List, Dict, Optional, Union, Any
 from typing import List, Dict, Optional, Tuple, Any, Union
 import pandas as pd
 import numpy as np
@@ -35,6 +34,67 @@ def validate_smiles(smiles: str) -> bool:
         return mol is not None
     except:
         return False
+
+def validate_inchi(inchi: str) -> bool:
+    """
+    Validate InChI string using RDKit.
+    
+    Args:
+        inchi: InChI string to validate
+    
+    Returns:
+        bool: True if valid, False otherwise
+    """
+    if not isinstance(inchi, str):
+        return False
+    
+    # Basic InChI format check
+    if not inchi.strip().startswith('InChI='):
+        return False
+    
+    try:
+        mol = Chem.MolFromInchi(inchi)
+        return mol is not None
+    except:
+        return False
+
+def inchi_to_smiles(inchi: str) -> Optional[str]:
+    """
+    Convert InChI to SMILES using RDKit.
+    
+    Args:
+        inchi: InChI string to convert
+    
+    Returns:
+        Optional[str]: SMILES string if successful, None otherwise
+    """
+    if not isinstance(inchi, str):
+        logger.error("InChI input must be a string")
+        return None
+    
+    try:
+        # Clean the InChI string
+        inchi = inchi.strip()
+        
+        # Convert InChI to molecule object
+        mol = Chem.MolFromInchi(inchi)
+        if mol is None:
+            logger.error(f"Failed to parse InChI: {inchi}")
+            return None
+        
+        # Convert molecule to SMILES
+        smiles = Chem.MolToSmiles(mol)
+        
+        if smiles:
+            logger.info(f"Successfully converted InChI to SMILES: {inchi} -> {smiles}")
+            return smiles
+        else:
+            logger.error(f"Failed to generate SMILES from InChI: {inchi}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error converting InChI to SMILES: {str(e)}")
+        return None
 
 def delete_compound(compound_name: str) -> bool:
     """
@@ -127,8 +187,8 @@ def validate_csv_file(uploaded_file) -> Tuple[bool, Optional[pd.DataFrame]]:
             st.error("CSV must contain either 'compound_name' or 'compound' column")
             return False, None
             
-        if 'smiles' not in df.columns:
-            st.error("CSV must contain 'smiles' column")
+        if not any(col in df.columns for col in ['smiles', 'inchi']):
+            st.error("CSV must contain either 'smiles' or 'inchi' column")
             return False, None
 
         # If we have 'compound' but not 'compound_name', use 'compound'
@@ -137,19 +197,27 @@ def validate_csv_file(uploaded_file) -> Tuple[bool, Optional[pd.DataFrame]]:
 
         # Validate data
         invalid_names = []
-        invalid_smiles = []
+        invalid_structures = []
         for idx, row in df.iterrows():
             compound_name = row.get('compound_name', row.get('compound', ''))
             if not validate_compound_name(str(compound_name).strip()):
                 invalid_names.append(compound_name)
-            if not validate_smiles(str(row['smiles']).strip()):
-                invalid_smiles.append(idx + 1)
+            
+            # Check structure validity (SMILES or InChI)
+            if 'smiles' in df.columns and pd.notna(row['smiles']):
+                if not validate_smiles(str(row['smiles']).strip()):
+                    invalid_structures.append(f"Row {idx + 1}: Invalid SMILES")
+            elif 'inchi' in df.columns and pd.notna(row['inchi']):
+                if not validate_inchi(str(row['inchi']).strip()):
+                    invalid_structures.append(f"Row {idx + 1}: Invalid InChI")
+            else:
+                invalid_structures.append(f"Row {idx + 1}: No valid structure data")
         
         if invalid_names:
             st.error(f"Invalid compound names found: {', '.join(map(str, invalid_names[:5]))}")
             return False, None
-        if invalid_smiles:
-            st.error(f"Invalid SMILES strings found in rows: {invalid_smiles[:5]}")
+        if invalid_structures:
+            st.error(f"Invalid structure data found: {invalid_structures[:5]}")
             return False, None
         
         return True, df

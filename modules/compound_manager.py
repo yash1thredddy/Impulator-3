@@ -17,7 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from config import RESULTS_DIR, ACTIVITY_TYPES
 from modules.data_processor import process_compound, load_results
-from modules.utils import validate_compound_name, validate_smiles
+from modules.utils import validate_compound_name, validate_smiles, validate_inchi, inchi_to_smiles
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -110,16 +110,21 @@ def check_existing_compound(
 
 def process_and_store(
     compound_name: str,
-    smiles: str,
+    structure_input: str = None,
+    input_format: str = "smiles",
+    smiles: str = None,  # Keep for backward compatibility
     similarity_threshold: int = 80,
     activity_types: List[str] = ACTIVITY_TYPES
 ) -> bool:
     """
     Process a compound and store results with improved validation.
+    Supports both SMILES and InChI input formats.
     
     Args:
         compound_name: Name of the compound
-        smiles: SMILES string
+        structure_input: Chemical structure input (SMILES or InChI)
+        input_format: Format of structure_input ("smiles" or "inchi")
+        smiles: SMILES string (for backward compatibility)
         similarity_threshold: Similarity threshold for search
         activity_types: List of activity types to process
     
@@ -127,21 +132,51 @@ def process_and_store(
         bool: True if processing successful, False otherwise
     """
     try:
+        # Handle backward compatibility - if smiles is provided, use it
+        if smiles is not None and structure_input is None:
+            structure_input = smiles
+            input_format = "smiles"
+        
         # Validate inputs
         if not validate_compound_name(compound_name):
             st.error("Invalid compound name. Please use alphanumeric characters and avoid special characters.")
             return False
         
-        if not validate_smiles(smiles):
-            st.error("Invalid SMILES string. Please check the input format.")
+        if not structure_input:
+            st.error("No chemical structure provided.")
+            return False
+        
+        # Handle different input formats and convert to SMILES if needed
+        final_smiles = None
+        if input_format.lower() == "smiles":
+            from modules.utils import validate_smiles
+            if not validate_smiles(structure_input):
+                st.error("Invalid SMILES string. Please check the input format.")
+                return False
+            final_smiles = structure_input
+        elif input_format.lower() == "inchi":
+            from modules.utils import validate_inchi, inchi_to_smiles
+            if not validate_inchi(structure_input):
+                st.error("Invalid InChI string. Please check the input format.")
+                return False
+            
+            # Convert InChI to SMILES
+            with st.spinner("Converting InChI to SMILES..."):
+                final_smiles = inchi_to_smiles(structure_input)
+                if final_smiles is None:
+                    st.error("Failed to convert InChI to SMILES. Please check the InChI format.")
+                    return False
+                st.success(f"Successfully converted InChI to SMILES: {final_smiles}")
+        else:
+            st.error(f"Unsupported input format: {input_format}")
             return False
         
         if not activity_types:
             st.error("No activity types selected. Please select at least one activity type.")
             return False
         
-        # Check for existing compound
-        validated_compound_name = check_existing_compound(compound_name, smiles, similarity_threshold, activity_types)
+        # Check for existing compound (use final_smiles for consistency)
+        validated_compound_name = check_existing_compound(compound_name, final_smiles, similarity_threshold, activity_types)
         if validated_compound_name is None:
             return False
         
@@ -149,7 +184,7 @@ def process_and_store(
         with st.spinner(f"Processing compound {validated_compound_name}..."):
             results = process_compound(
                 validated_compound_name, 
-                smiles, 
+                final_smiles, 
                 similarity_threshold, 
                 activity_types
             )
@@ -202,14 +237,29 @@ def process_csv_batch(
     for idx, row in df.iterrows():
         try:
             compound_name = str(row['compound_name']).strip()
-            smiles = str(row['smiles']).strip()
             
-            progress_text.text(f"Processing compound {idx+1}/{len(df)}: {compound_name}")
+            # Determine structure input and format
+            structure_input = None
+            input_format = None
+            
+            if 'smiles' in df.columns and pd.notna(row['smiles']):
+                structure_input = str(row['smiles']).strip()
+                input_format = "smiles"
+            elif 'inchi' in df.columns and pd.notna(row['inchi']):
+                structure_input = str(row['inchi']).strip()
+                input_format = "inchi"
+            else:
+                logger.error(f"No valid structure data found for compound {compound_name} at row {idx+1}")
+                fail_count += 1
+                continue
+            
+            progress_text.text(f"Processing compound {idx+1}/{len(df)}: {compound_name} ({input_format.upper()})")
             
             # Process the compound
             result = process_and_store(
                 compound_name=compound_name,
-                smiles=smiles,
+                structure_input=structure_input,
+                input_format=input_format,
                 similarity_threshold=similarity_threshold,
                 activity_types=activity_types
             )

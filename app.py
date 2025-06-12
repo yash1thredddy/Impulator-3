@@ -611,17 +611,59 @@ def display_analyze_view():
     if input_method == "Manual":
         st.subheader("Enter Compound Information")
         compound_name = st.text_input("**Compound Name**")
-        smiles = st.text_area("**SMILES String**", height=80)
+        
+        # Toggle between SMILES and InChI input
+        input_type = st.radio(
+            "**Chemical Structure Input Type**",
+            ["SMILES", "InChI"],
+            horizontal=True,
+            help="Choose whether to input the compound structure as SMILES or InChI"
+        )
+        
+        # Add info box explaining the formats
+        with st.expander("ℹ️ About Chemical Structure Formats", expanded=False):
+            st.markdown("""
+            **SMILES (Simplified Molecular Input Line Entry System):**
+            - A text-based notation for describing molecular structures
+            - Example: `CCO` (ethanol), `CC(=O)O` (acetic acid)
+            
+            **InChI (International Chemical Identifier):**
+            - A standardized identifier for chemical compounds
+            - Example: `InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3` (ethanol)
+            - More unique and standardized than SMILES
+            
+            When you select InChI, it will be automatically converted to SMILES for processing.
+            """)
+        
+        if input_type == "SMILES":
+            structure_input = st.text_area("**SMILES String**", height=80, 
+                                          placeholder="Enter SMILES string (e.g., CCO for ethanol)")
+        else:
+            structure_input = st.text_area("**InChI String**", height=80,
+                                          placeholder="Enter InChI string (e.g., InChI=1S/C2H6O/c1-2-3/h3H,2H2,1H3)")
+        
+        # Store the input type for processing
+        input_format = input_type.lower()
         
         if st.button("Process Compound", key="process_single_compound", type="primary", use_container_width=False):
             if not selected_activities:
                 st.error("Please select at least one activity type to process.")
                 return
             
+            # Validate inputs
+            if not compound_name.strip():
+                st.error("Please enter a compound name.")
+                return
+                
+            if not structure_input.strip():
+                st.error(f"Please enter a {input_type} string.")
+                return
+            
             with st.spinner("Processing compound..."):
                 process_result = process_and_store(
                     compound_name=compound_name,
-                    smiles=smiles,
+                    structure_input=structure_input,
+                    input_format=input_format,
                     similarity_threshold=similarity_threshold,
                     activity_types=selected_activities
                 )
@@ -637,7 +679,7 @@ def display_analyze_view():
     # CSV upload processing
     elif input_method == "CSV Upload":
         st.subheader("Upload CSV File")
-        st.info("CSV file should contain 'compound_name' and 'smiles' columns.")
+        st.info("CSV file should contain 'compound_name' and either 'smiles' or 'inchi' columns.")
         
         uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
         
