@@ -375,19 +375,19 @@ def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = N
             # Create a dropdown to select molecules
             selected_molecule = st.selectbox(
                 "Select Molecule:",
-                options=[f"{mol['ChEMBL ID']} - {mol['Molecule Name']}" for mol in structure_info],
+                options=[f"{mol['ChEMBL_ID']} - {mol['Molecule_Name']}" for mol in structure_info],
                 key="viewer_molecule_selector"
             )
-            
+
             # Get selected molecule info
-            selected_idx = next((i for i, mol in enumerate(structure_info) 
-                               if f"{mol['ChEMBL ID']} - {mol['Molecule Name']}" == selected_molecule), 0)
+            selected_idx = next((i for i, mol in enumerate(structure_info)
+                               if f"{mol['ChEMBL_ID']} - {mol['Molecule_Name']}" == selected_molecule), 0)
             mol_data = structure_info[selected_idx]
-            
+
             # Display molecule info
             st.subheader("Molecule Information")
-            st.write(f"**ChEMBL ID:** {mol_data['ChEMBL ID']}")
-            st.write(f"**Name:** {mol_data['Molecule Name']}")
+            st.write(f"**ChEMBL ID:** {mol_data['ChEMBL_ID']}")
+            st.write(f"**Name:** {mol_data['Molecule_Name']}")
             st.write(f"**Formula:** {mol_data['Formula']}")
             if mol_data['Exact Mass']:
                 st.write(f"**Exact Mass:** {mol_data['Exact Mass']:.4f}")
@@ -397,9 +397,9 @@ def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = N
             st.download_button(
                 "Download Structure Data (JSON)",
                 data=json.dumps(mol_data, indent=2),
-                file_name=f"{mol_data['ChEMBL ID']}_structure.json",
+                file_name=f"{mol_data['ChEMBL_ID']}_structure.json",
                 mime="application/json",
-                key=f"viewer_download_{mol_data['ChEMBL ID']}"
+                key=f"viewer_download_{mol_data['ChEMBL_ID']}"
             )
             
             # Display 2D structure

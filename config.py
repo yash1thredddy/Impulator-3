@@ -56,3 +56,8 @@ MOLECULE_COLORS = {
     "Br": "#A52A2A", # Bromine
     "I": "#800080"   # Iodine
 }
+
+# O[Q/P/L]A Scoring Configuration
+USE_PDB_EVIDENCE = True  # Enable PDB Structural Evidence (Component 4)
+SHOW_PDB_PROGRESS = True  # Show progress indicators during PDB queries
+PDB_API_DELAY = 0.1  # Delay between PDB API calls (seconds) to avoid rate limiting

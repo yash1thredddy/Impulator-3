@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 similarity = new_client.similarity
 molecule = new_client.molecule
 activity = new_client.activity
+target = new_client.target
 
 # Configure retry strategy
 retry_strategy = Retry(
@@ -67,10 +68,10 @@ def get_molecule_data(chembl_id: str) -> Optional[Dict]:
 def get_classification(inchikey: str) -> Optional[Dict]:
     """
     Get classification data from ClassyFire API with caching.
-    
+
     Args:
         inchikey: InChIKey for the molecule
-    
+
     Returns:
         Optional[Dict]: Classification data or None if error
     """
@@ -82,6 +83,30 @@ def get_classification(inchikey: str) -> Optional[Dict]:
         return None
     except Exception as e:
         logger.error(f"Error getting classification for {inchikey}: {str(e)}")
+        return None
+
+@lru_cache(maxsize=CACHE_SIZE)
+def get_target_name(target_chembl_id: str) -> Optional[str]:
+    """
+    Fetch target name from ChEMBL API with caching.
+
+    Args:
+        target_chembl_id: ChEMBL Target ID
+
+    Returns:
+        Optional[str]: Target preferred name or None if error
+    """
+    if not target_chembl_id:
+        return None
+
+    try:
+        target_data = target.get(target_chembl_id)
+        if target_data:
+            # Try to get pref_name, fall back to target_chembl_id
+            return target_data.get('pref_name', target_chembl_id)
+        return None
+    except Exception as e:
+        logger.error(f"Error fetching target name for {target_chembl_id}: {str(e)}")
         return None
 
 def get_chembl_ids(smiles: str, similarity_threshold: int = 80) -> List[Dict[str, str]]:
@@ -218,7 +243,7 @@ def fetch_compound_activities(
             activities = activity.filter(
                 molecule_chembl_id=chembl_id,
                 standard_type=activity_type
-            ).only('standard_value', 'standard_units', 'standard_type', 'target_chembl_id')
+            ).only('standard_value', 'standard_units', 'standard_type', 'target_chembl_id', 'target_pref_name')
             
             all_activities.extend(list(activities))
         except Exception as e:

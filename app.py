@@ -56,108 +56,6 @@ def reset_processing_state():
     st.session_state.error_state = None
     st.session_state.processing_progress = 0
 
-def analyze_activity_cliffs(df_results):
-    """
-    Analyze activity cliffs in the dataset - pairs of molecules with similar structures 
-    but significantly different activities.
-    
-    Args:
-        df_results: DataFrame containing the compound analysis results
-    """
-    if df_results is None or df_results.empty:
-        return
-    
-    # Check if we have necessary data
-    if not all(col in df_results.columns for col in ['ChEMBL ID', 'pActivity', 'Molecular Weight']):
-        return
-    
-    st.subheader("⛰️ Activity Cliff Analysis")
-    st.markdown("""
-    Activity cliffs are pairs of compounds with similar structures but significantly different activities.
-    They represent opportunities for understanding structure-activity relationships.
-    """)
-    
-    # Filter out invalid data
-    valid_data = df_results.dropna(subset=['ChEMBL ID', 'pActivity']).copy()
-    
-    if valid_data.empty or len(valid_data['ChEMBL ID'].unique()) < 2:
-        st.info("Insufficient data for activity cliff analysis. Need at least two compounds with activity data.")
-        return
-    
-    # Group by ChEMBL ID and get the mean activity
-    activity_by_compound = valid_data.groupby('ChEMBL ID')['pActivity'].mean().reset_index()
-    
-    # Calculate activity differences between all pairs
-    compounds = activity_by_compound['ChEMBL ID'].tolist()
-    activities = activity_by_compound['pActivity'].tolist()
-    
-    pairs = []
-    for i in range(len(compounds)):
-        for j in range(i+1, len(compounds)):
-            activity_diff = abs(activities[i] - activities[j])
-            
-            # Get a representative SMILES for each compound
-            smiles_i = valid_data[valid_data['ChEMBL ID'] == compounds[i]]['SMILES'].iloc[0]
-            smiles_j = valid_data[valid_data['ChEMBL ID'] == compounds[j]]['SMILES'].iloc[0]
-            
-            # Get molecular weights for reference
-            mw_i = valid_data[valid_data['ChEMBL ID'] == compounds[i]]['Molecular Weight'].iloc[0]
-            mw_j = valid_data[valid_data['ChEMBL ID'] == compounds[j]]['Molecular Weight'].iloc[0]
-            
-            # Add to pairs list
-            pairs.append({
-                'Compound 1': compounds[i],
-                'Compound 2': compounds[j],
-                'Activity 1': activities[i],
-                'Activity 2': activities[j],
-                'Activity Difference': activity_diff,
-                'MW 1': mw_i,
-                'MW 2': mw_j,
-                'MW Difference': abs(mw_i - mw_j),
-                'SMILES 1': smiles_i,
-                'SMILES 2': smiles_j
-            })
-    
-    if not pairs:
-        st.info("No valid pairs found for activity cliff analysis.")
-        return
-    
-    # Convert to DataFrame and sort by activity difference
-    pairs_df = pd.DataFrame(pairs)
-    pairs_df = pairs_df.sort_values(by='Activity Difference', ascending=False)
-    
-    # Define significant activity cliffs (difference > 1 log unit)
-    activity_cliff_threshold = 1.0
-    significant_cliffs = pairs_df[pairs_df['Activity Difference'] > activity_cliff_threshold]
-    
-    # Display summary
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("Total Compound Pairs", len(pairs_df))
-    with col2:
-        st.metric("Significant Activity Cliffs", len(significant_cliffs))
-    
-    # Explain the threshold
-    st.markdown(f"""
-    **Significant activity cliffs** are defined as compound pairs with:
-    - Activity difference > {activity_cliff_threshold} log units
-    - Similar molecular scaffolds
-    """)
-    
-    # Show the cliffs in a table
-    if not significant_cliffs.empty:
-        st.markdown("##### Significant Activity Cliffs")
-        # Format the dataframe for display
-        display_df = significant_cliffs[['Compound 1', 'Compound 2', 'Activity 1', 'Activity 2', 
-                                       'Activity Difference', 'MW 1', 'MW 2', 'MW Difference']].copy()
-        # Round numeric columns
-        for col in ['Activity 1', 'Activity 2', 'Activity Difference', 'MW 1', 'MW 2', 'MW Difference']:
-            display_df[col] = display_df[col].round(2)
-        
-        st.dataframe(display_df, use_container_width=True)
-    else:
-        st.info("No significant activity cliffs were found in the dataset.")
-
 def display_home_view():
     """Display the home/landing page with compound search and listing."""
     
@@ -302,8 +200,8 @@ def display_home_view():
                         
                         with col2:
                             # Count unique ChEMBL IDs
-                            if 'ChEMBL ID' in df.columns:
-                                unique_chembl = df['ChEMBL ID'].nunique()
+                            if 'ChEMBL_ID' in df.columns:
+                                unique_chembl = df['ChEMBL_ID'].nunique()
                                 st.markdown(f"**Similar:** {unique_chembl}")
                     else:
                         # Show warning about missing data directly in the card
@@ -415,35 +313,72 @@ def display_compound_details_view():
     # Summary tab
     with tabs[0]:
         display_compound_summary(
-            df_results=df_results, 
+            df_results=df_results,
             compound_name=selected_compound,
             similarity_threshold=st.session_state.last_similarity_threshold
         )
-        
-        # Activity cliff analysis
-        st.markdown("---")
-        analyze_activity_cliffs(df_results)
     
     # Interactive plots tab
     with tabs[1]:
         # Create subtabs for different plot categories
         plot_tabs = st.tabs([
-            "SEI vs BEI", 
-            "Activity Plots", 
-            "SEI Visualizations", 
+            "📊 Quick Plots",
+            "🎨 Custom Builder",
+            "Activity Plots",
+            "SEI Visualizations",
             "BEI Visualizations"
         ])
-        
+
+        # Quick plots tab - Default scatter plots
         with plot_tabs[0]:
-            show_interactive_plots(compound_folder, "scatter")
-        
+            st.markdown("### Quick Access Plots")
+            st.markdown("*Pre-configured efficiency metric visualizations with customization*")
+
+            # Add quick buttons for common plots
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown("#### Efficiency Scatter Plots")
+                if st.button("📈 SEI vs BEI", key="quick_sei_bei", use_container_width=True):
+                    st.session_state.quick_plot = "sei_bei"
+                if st.button("📈 NSEI vs NBEI", key="quick_nsei_nbei", use_container_width=True):
+                    st.session_state.quick_plot = "nsei_nbei"
+
+            with col2:
+                st.markdown("#### Metric Distributions")
+                if st.button("📊 Efficiency Boxplots", key="quick_boxplots", use_container_width=True):
+                    st.session_state.quick_plot = "boxplots"
+                if st.button("📊 Activity Distribution", key="quick_activity", use_container_width=True):
+                    st.session_state.quick_plot = "activity"
+
+            # Show the selected quick plot with customization
+            if 'quick_plot' in st.session_state:
+                st.markdown("---")
+
+                # Import the enhanced static plot viewer
+                from modules.visualization import show_static_plot_with_controls
+
+                if st.session_state.quick_plot == "sei_bei":
+                    show_static_plot_with_controls(df_results, "SEI", "BEI", compound_folder)
+                elif st.session_state.quick_plot == "nsei_nbei":
+                    show_static_plot_with_controls(df_results, "NSEI", "NBEI", compound_folder)
+                elif st.session_state.quick_plot == "boxplots":
+                    show_interactive_plots(compound_folder, "sei")
+                elif st.session_state.quick_plot == "activity":
+                    show_interactive_plots(compound_folder, "activity")
+
+        # Custom visualization builder tab
         with plot_tabs[1]:
-            show_interactive_plots(compound_folder, "activity")
-        
+            from modules.custom_viz_builder import custom_visualization_builder
+            custom_visualization_builder(df_results, selected_compound)
+
         with plot_tabs[2]:
-            show_interactive_plots(compound_folder, "sei")
-        
+            show_interactive_plots(compound_folder, "activity")
+
         with plot_tabs[3]:
+            show_interactive_plots(compound_folder, "sei")
+
+        with plot_tabs[4]:
             show_interactive_plots(compound_folder, "bei")
     
     # Molecule viewer tab
@@ -458,26 +393,150 @@ def display_compound_details_view():
         # Call the viewer with the style settings
         molecule_viewer_app(compound_folder, style_settings)
     
-    # Data table tab
+    # Data table tab with 4 sub-tabs
     with tabs[3]:
-        st.subheader("📋 Complete Results Table")
-        st.dataframe(df_results, use_container_width=True)
-        
-        # Download options
-        col1, col2 = st.columns(2)
-        
-        # CSV download option
-        with col1:
-            csv_file = df_results.to_csv(index=False)
+        st.subheader("📋 Data Tables")
+
+        # Create sub-tabs for different data views
+        data_tabs = st.tabs([
+            "🧬 Data Analysis",
+            "📊 Interpretation",
+            "🔬 PDB Evidence",
+            "📑 Complete Table"
+        ])
+
+        # Tab 1: Data Analysis (ChEMBL_ID to Subclass)
+        with data_tabs[0]:
+            st.markdown("**Core bioactivity and chemical classification data**")
+
+            # Define columns for Data Analysis
+            data_analysis_cols = [
+                'ChEMBL_ID', 'Molecule_Name', 'SMILES',
+                'Molecular_Weight', 'TPSA', 'HBD', 'HBA', 'Heavy_Atoms', 'NPOL', 'QED',
+                'Activity_Type', 'Activity_nM', 'pActivity', 'Target_ChEMBL_ID', 'Target_Name',
+                'SEI', 'BEI', 'NSEI', 'NBEI', 'nBEI_viz',
+                'Modulus_SEI_BEI', 'Angle_SEI_BEI', 'Slope_SEI_BEI',
+                'Modulus_NSEI_NBEI', 'Angle_NSEI_NBEI', 'Slope_NSEI_NBEI', 'Intercept_NSEI_NBEI',
+                'SEI_Percentile', 'BEI_Percentile', 'NSEI_Percentile', 'NBEI_Percentile',
+                'SEI_Zscore', 'BEI_Zscore', 'NSEI_Zscore', 'NBEI_Zscore',
+                'Is_SEI_Outlier', 'Is_BEI_Outlier', 'Is_NSEI_Outlier', 'Is_NBEI_Outlier',
+                'Is_Modulus_Outlier', 'Outlier_Count', 'Is_Efficiency_Outlier',
+                'Kingdom', 'Superclass', 'Class', 'Subclass', 'Direct_Parent', 'Molecular_Framework',
+                'Description', 'ChEMONT_ID_Class', 'ChEMONT_ID_Subclass',
+                'NP_Pathway', 'NP_Superclass', 'NP_Class', 'NP_isglycoside'
+            ]
+
+            available_cols = [col for col in data_analysis_cols if col in df_results.columns]
+            df_data_analysis = df_results[available_cols].copy()
+
+            st.caption(f"📊 Showing {len(df_data_analysis)} rows × {len(available_cols)} columns")
+            st.dataframe(df_data_analysis, use_container_width=True, height=500)
+
+            # Download button
+            csv_data = df_data_analysis.to_csv(index=False)
             st.download_button(
-                "📥 Download CSV", 
-                csv_file, 
-                file_name=f"{selected_compound}_results.csv", 
+                "📥 Download Data Analysis CSV",
+                csv_data,
+                file_name=f"{selected_compound}_data_analysis.csv",
                 mime="text/csv"
             )
-        
-        # Zip download option for this compound
+
+        # Tab 2: Interpretation (O[Q/P/L]A, IMP, etc.)
+        with data_tabs[1]:
+            st.markdown("**O[Q/P/L]A scoring, IMP classification, and interpretations**")
+
+            # Define columns for Interpretation
+            interpretation_cols = [
+                'ChEMBL_ID', 'Molecule_Name',
+                'Efficiency_Score', 'Angle_Score', 'Distance_Score', 'PDB_Score',
+                'OQPLA_Base_Score', 'QED_Multiplier', 'OQPLA_Final_Score',
+                'OQPLA_Classification', 'OQPLA_Interpretation', 'OQPLA_Action', 'OQPLA_Priority',
+                'Efficiency_Contribution', 'Angle_Contribution', 'Distance_Contribution', 'PDB_Contribution',
+                'QED_Impact',
+                'Is_IMP_Candidate', 'IMP_Confidence'
+            ]
+
+            available_cols = [col for col in interpretation_cols if col in df_results.columns]
+            df_interpretation = df_results[available_cols].copy()
+
+            st.caption(f"📊 Showing {len(df_interpretation)} rows × {len(available_cols)} columns")
+            st.dataframe(df_interpretation, use_container_width=True, height=500)
+
+            # Download button
+            csv_interpretation = df_interpretation.to_csv(index=False)
+            st.download_button(
+                "📥 Download Interpretation CSV",
+                csv_interpretation,
+                file_name=f"{selected_compound}_interpretation.csv",
+                mime="text/csv"
+            )
+
+        # Tab 3: PDB Evidence (compound-level)
+        with data_tabs[2]:
+            st.markdown("**PDB structural evidence (compound-level, no duplication)**")
+
+            # Try to load PDB summary CSV
+            compound_folder = os.path.join(RESULTS_DIR, selected_compound.replace(' ', '_'))
+            pdb_summary_path = os.path.join(compound_folder, f"{selected_compound}_pdb_summary.csv")
+
+            if os.path.exists(pdb_summary_path):
+                try:
+                    df_pdb = pd.read_csv(pdb_summary_path)
+
+                    st.caption(f"🔬 Showing {len(df_pdb)} unique compounds with PDB evidence")
+                    st.dataframe(df_pdb, use_container_width=True, height=500)
+
+                    # Download button
+                    csv_pdb = df_pdb.to_csv(index=False)
+                    st.download_button(
+                        "📥 Download PDB Evidence CSV",
+                        csv_pdb,
+                        file_name=f"{selected_compound}_pdb_summary.csv",
+                        mime="text/csv"
+                    )
+
+                    st.info("💡 **Note**: This table shows one row per unique compound. PDB evidence is compound-specific, not target-specific.")
+
+                except Exception as e:
+                    st.error(f"Error loading PDB summary: {str(e)}")
+            else:
+                st.warning("PDB summary file not found. PDB integration may not be enabled or data not yet processed.")
+                st.info("PDB evidence is stored in a separate file to avoid duplication across bioactivity rows.")
+
+        # Tab 4: Complete Table (merged view)
+        with data_tabs[3]:
+            st.markdown("**Complete bioactivity data with all columns**")
+            st.caption("⚠️ **Note**: This view shows bioactivity-level data. PDB details are not duplicated here - see 'PDB Evidence' tab for compound-level structural data.")
+
+            st.caption(f"📊 Showing {len(df_results)} rows × {len(df_results.columns)} columns")
+            st.dataframe(df_results, use_container_width=True, height=500)
+
+            # Download button
+            csv_complete = df_results.to_csv(index=False)
+            st.download_button(
+                "📥 Download Complete CSV",
+                csv_complete,
+                file_name=f"{selected_compound}_complete_results.csv",
+                mime="text/csv"
+            )
+
+        # Global download options at bottom
+        st.markdown("---")
+        st.markdown("**📦 Download All Files:**")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            # All-in-one CSV download (complete table)
+            csv_file = df_results.to_csv(index=False)
+            st.download_button(
+                "📥 Download Complete Results CSV",
+                csv_file,
+                file_name=f"{selected_compound}_complete_results.csv",
+                mime="text/csv"
+            )
+
         with col2:
+            # Zip download option for this compound
             if st.button(f"📥 Download All {selected_compound} Files (ZIP)"):
                 with st.spinner(f"Preparing {selected_compound} files..."):
                     zip_file = zip_compound_results(selected_compound)
@@ -501,7 +560,7 @@ def display_compound_details_view():
         
         # Check for NaN values in key plotting columns
         st.write("### NaN Values in Key Columns")
-        plot_cols = ['SEI', 'BEI', 'NSEI', 'nBEI', 'pActivity', 'Activity (nM)']
+        plot_cols = ['SEI', 'BEI', 'NSEI', 'NBEI', 'pActivity', 'Activity_nM']
         nan_data = []
         for col in plot_cols:
             if col in df_results.columns:

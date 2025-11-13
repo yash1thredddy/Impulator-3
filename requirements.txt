@@ -13,3 +13,4 @@ scikit-learn>=1.2.2
 statsmodels>=0.13.5
 seaborn>=0.12.2
 matplotlib>=3.7.1
+rcsb-api>=1.4.2
