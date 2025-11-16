@@ -393,8 +393,6 @@ def add_oqpla_interpretation(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame: Input DataFrame with added columns:
             - OQPLA_Classification: e.g., "Strong IMP"
-            - OQPLA_Interpretation: Detailed interpretation
-            - OQPLA_Action: Recommended action
             - OQPLA_Priority: Priority level (1-4 or None)
 
     Example:
@@ -410,8 +408,7 @@ def add_oqpla_interpretation(df: pd.DataFrame) -> pd.DataFrame:
     interpretations = df['OQPLA_Final_Score'].apply(interpret_oqpla_score)
 
     df['OQPLA_Classification'] = interpretations.apply(lambda x: x['classification'])
-    df['OQPLA_Interpretation'] = interpretations.apply(lambda x: x['interpretation'])
-    df['OQPLA_Action'] = interpretations.apply(lambda x: x['action'])
+    # Removed OQPLA_Interpretation and OQPLA_Action to avoid user complaints
     df['OQPLA_Priority'] = interpretations.apply(lambda x: x['priority'])
 
     return df

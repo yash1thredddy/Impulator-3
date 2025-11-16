@@ -419,11 +419,12 @@ def display_compound_details_view():
                 'Modulus_NSEI_NBEI', 'Angle_NSEI_NBEI', 'Slope_NSEI_NBEI', 'Intercept_NSEI_NBEI',
                 'SEI_Percentile', 'BEI_Percentile', 'NSEI_Percentile', 'NBEI_Percentile',
                 'SEI_Zscore', 'BEI_Zscore', 'NSEI_Zscore', 'NBEI_Zscore',
-                'Is_SEI_Outlier', 'Is_BEI_Outlier', 'Is_NSEI_Outlier', 'Is_NBEI_Outlier',
-                'Is_Modulus_Outlier', 'Outlier_Count', 'Is_Efficiency_Outlier',
+                # Removed individual outlier flags (Is_SEI_Outlier, Is_BEI_Outlier, etc.) and Is_Efficiency_Outlier
+                # Removed Is_Modulus_Outlier and Outlier_Count - interpretive flags handled in backend
                 'Kingdom', 'Superclass', 'Class', 'Subclass', 'Direct_Parent', 'Molecular_Framework',
                 'Description', 'ChEMONT_ID_Class', 'ChEMONT_ID_Subclass',
-                'NP_Pathway', 'NP_Superclass', 'NP_Class', 'NP_isglycoside'
+                'NP_Pathway', 'NP_Superclass', 'NP_Class'
+                # Removed NP_isglycoside - interpretive flag not needed in UI
             ]
 
             available_cols = [col for col in data_analysis_cols if col in df_results.columns]
@@ -450,10 +451,10 @@ def display_compound_details_view():
                 'ChEMBL_ID', 'Molecule_Name',
                 'Efficiency_Score', 'Angle_Score', 'Distance_Score', 'PDB_Score',
                 'OQPLA_Base_Score', 'QED_Multiplier', 'OQPLA_Final_Score',
-                'OQPLA_Classification', 'OQPLA_Interpretation', 'OQPLA_Action', 'OQPLA_Priority',
+                'OQPLA_Classification', 'OQPLA_Priority',
                 'Efficiency_Contribution', 'Angle_Contribution', 'Distance_Contribution', 'PDB_Contribution',
-                'QED_Impact',
-                'Is_IMP_Candidate', 'IMP_Confidence'
+                'QED_Impact'
+                # Removed Is_IMP_Candidate and IMP_Confidence - interpretive flags handled in backend
             ]
 
             available_cols = [col for col in interpretation_cols if col in df_results.columns]
@@ -471,37 +472,60 @@ def display_compound_details_view():
                 mime="text/csv"
             )
 
-        # Tab 3: PDB Evidence (compound-level)
+        # Tab 3: PDB Evidence
         with data_tabs[2]:
-            st.markdown("**PDB structural evidence (compound-level, no duplication)**")
+            st.markdown("**PDB Structural Evidence**")
 
-            # Try to load PDB summary CSV
+            # Load detailed PDB structures directly
             compound_folder = os.path.join(RESULTS_DIR, selected_compound.replace(' ', '_'))
-            pdb_summary_path = os.path.join(compound_folder, f"{selected_compound}_pdb_summary.csv")
+            compound_name = selected_compound.replace(' ', '_')
+            pdb_details_path = os.path.join(compound_folder, f"{compound_name}_pdb_structures_detailed.csv")
 
-            if os.path.exists(pdb_summary_path):
+            if os.path.exists(pdb_details_path):
                 try:
-                    df_pdb = pd.read_csv(pdb_summary_path)
+                    pdb_details_df = pd.read_csv(pdb_details_path)
 
-                    st.caption(f"🔬 Showing {len(df_pdb)} unique compounds with PDB evidence")
-                    st.dataframe(df_pdb, use_container_width=True, height=500)
+                    st.markdown("*Sorted by quality (⭐⭐⭐ first) and resolution (best first)*")
 
-                    # Download button
-                    csv_pdb = df_pdb.to_csv(index=False)
+                    # Prepare display dataframe
+                    display_df = pdb_details_df.copy()
+
+                    # Truncate long titles for better display
+                    if 'Title' in display_df.columns:
+                        display_df['Title'] = display_df['Title'].apply(
+                            lambda x: (x[:60] + '...') if isinstance(x, str) and len(x) > 60 else x
+                        )
+
+                    # Make URL clickable by converting to HTML link
+                    if 'URL' in display_df.columns and 'PDB_ID' in display_df.columns:
+                        display_df['PDB_Link'] = display_df.apply(
+                            lambda row: f'<a href="{row["URL"]}" target="_blank">{row["PDB_ID"]}</a>',
+                            axis=1
+                        )
+                        # Remove original PDB_ID, URL, SMILES columns
+                        cols_to_display = ['PDB_Link'] + [col for col in display_df.columns
+                                                          if col not in ['PDB_Link', 'PDB_ID', 'URL', 'SMILES']]
+                        display_df = display_df[cols_to_display]
+
+                    # Display the dataframe with HTML links enabled
+                    st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+                    st.caption(f"📊 **{len(pdb_details_df)} total PDB structures** sorted by quality and resolution. Click PDB_Link to view structure at RCSB PDB.")
+
+                    # Download button for detailed structures
+                    csv_pdb_details = pdb_details_df.to_csv(index=False)
                     st.download_button(
-                        "📥 Download PDB Evidence CSV",
-                        csv_pdb,
-                        file_name=f"{selected_compound}_pdb_summary.csv",
+                        "📥 Download PDB Structures CSV",
+                        csv_pdb_details,
+                        file_name=f"{compound_name}_pdb_structures_detailed.csv",
                         mime="text/csv"
                     )
 
-                    st.info("💡 **Note**: This table shows one row per unique compound. PDB evidence is compound-specific, not target-specific.")
-
                 except Exception as e:
-                    st.error(f"Error loading PDB summary: {str(e)}")
+                    st.error(f"Error loading PDB structures: {str(e)}")
             else:
-                st.warning("PDB summary file not found. PDB integration may not be enabled or data not yet processed.")
-                st.info("PDB evidence is stored in a separate file to avoid duplication across bioactivity rows.")
+                st.warning("PDB structures file not found. PDB integration may not be enabled or data not yet processed.")
+                st.info("💡 PDB evidence shows experimental crystal structures from the RCSB Protein Data Bank that contain compounds similar to your query.")
 
         # Tab 4: Complete Table (merged view)
         with data_tabs[3]:
