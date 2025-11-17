@@ -132,28 +132,86 @@ def delete_compound(compound_name: str) -> bool:
         logger.error(f"Error deleting compound {compound_name}: {str(e)}")
         return False
     
+def sanitize_compound_name(name: str) -> str:
+    """
+    Sanitize compound name for use as file/folder names.
+
+    Handles special cases:
+    - "TETRANDRINE,(+):" -> "TETRANDRINE(+)"
+    - "SITOSTEROL,BETA:" -> "SITOSTEROL BETA"
+    - "URSOLIC ACID" -> "URSOLIC_ACID" (preserve but use underscore)
+
+    Args:
+        name: Original compound name
+
+    Returns:
+        str: Sanitized compound name safe for filesystem
+    """
+    if not isinstance(name, str):
+        return "UNKNOWN"
+
+    # Strip leading/trailing whitespace
+    name = name.strip()
+
+    # Remove trailing colons
+    name = name.rstrip(':')
+
+    # Handle comma followed by space or special characters
+    # "SITOSTEROL,BETA" -> "SITOSTEROL BETA"
+    # "TETRANDRINE,(+)" -> "TETRANDRINE(+)"
+    name = name.replace(',', ' ')
+
+    # Remove or replace filesystem-unsafe characters
+    # Invalid chars for Windows: < > : " / \ | ? *
+    # Invalid chars for Unix: /
+    unsafe_chars = '<>:"/\\|?*'
+    for char in unsafe_chars:
+        name = name.replace(char, '')
+
+    # Replace multiple spaces with single space
+    while '  ' in name:
+        name = name.replace('  ', ' ')
+
+    # Replace spaces with underscores for folder names
+    # "URSOLIC ACID" -> "URSOLIC_ACID"
+    name = name.replace(' ', '_')
+
+    # Remove leading/trailing underscores
+    name = name.strip('_')
+
+    # Limit length to 100 characters
+    if len(name) > 100:
+        name = name[:100]
+
+    # Ensure name is not empty
+    if not name:
+        name = "UNKNOWN"
+
+    return name
+
+
 def validate_compound_name(name: str) -> bool:
     """
     Validate compound name.
-    
+
     Args:
         name: Compound name to validate
-    
+
     Returns:
         bool: True if valid, False otherwise
     """
     if not isinstance(name, str):
         return False
-    
+
     # Check length
     if len(name) < 1 or len(name) > 100:
         return False
-    
+
     # Check for invalid characters
     invalid_chars = '<>:"/\\|?*'
     if any(char in name for char in invalid_chars):
         return False
-    
+
     return True
 
 def validate_csv_file(uploaded_file) -> Tuple[bool, Optional[pd.DataFrame]]:
@@ -196,13 +254,17 @@ def validate_csv_file(uploaded_file) -> Tuple[bool, Optional[pd.DataFrame]]:
             df['compound_name'] = df['compound']
 
         # Validate data
-        invalid_names = []
+        empty_names = []
         invalid_structures = []
         for idx, row in df.iterrows():
             compound_name = row.get('compound_name', row.get('compound', ''))
-            if not validate_compound_name(str(compound_name).strip()):
-                invalid_names.append(compound_name)
-            
+            # Only check if name is empty or too long (invalid chars will be auto-sanitized)
+            name_str = str(compound_name).strip()
+            if len(name_str) < 1:
+                empty_names.append(f"Row {idx + 1}")
+            elif len(name_str) > 100:
+                empty_names.append(f"Row {idx + 1} (name too long: {len(name_str)} chars)")
+
             # Check structure validity (SMILES or InChI)
             if 'smiles' in df.columns and pd.notna(row['smiles']):
                 if not validate_smiles(str(row['smiles']).strip()):
@@ -212,9 +274,9 @@ def validate_csv_file(uploaded_file) -> Tuple[bool, Optional[pd.DataFrame]]:
                     invalid_structures.append(f"Row {idx + 1}: Invalid InChI")
             else:
                 invalid_structures.append(f"Row {idx + 1}: No valid structure data")
-        
-        if invalid_names:
-            st.error(f"Invalid compound names found: {', '.join(map(str, invalid_names[:5]))}")
+
+        if empty_names:
+            st.error(f"Empty or invalid compound names found in: {', '.join(empty_names[:5])}")
             return False, None
         if invalid_structures:
             st.error(f"Invalid structure data found: {invalid_structures[:5]}")

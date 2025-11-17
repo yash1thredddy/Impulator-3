@@ -6,6 +6,7 @@ import json
 import logging
 from typing import Dict, Optional, Union, List
 
+import pandas as pd
 import streamlit as st
 from rdkit import Chem
 from rdkit.Chem import AllChem
@@ -341,25 +342,56 @@ def view_molecule_from_smiles(
 # Update in molecule_viewer_app function in molecule_viewer.py
 # Modified molecule_viewer_app function in molecule_viewer.py
 
-def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = None) -> None:
+def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = None, df_results: Optional[pd.DataFrame] = None) -> None:
     """
     Main function for the molecular viewer application.
-    
+
     Args:
         compound_folder: Path to the compound folder
         style_settings: Optional dictionary of style settings
+        df_results: Optional DataFrame with compound results for on-demand generation
     """
     try:
         structure_folder = os.path.join(compound_folder, "Structures")
         structure_info_path = os.path.join(structure_folder, "structure_info.json")
-        
+
         if not os.path.exists(structure_info_path):
-            st.warning("No structure information available for this compound.")
-            return
-        
+            # Offer to generate structures on-demand
+            if df_results is not None and not df_results.empty:
+                st.info("💡 Molecular structures have not been generated yet.")
+
+                # Get unique compounds from results
+                unique_compounds = df_results[['ChEMBL_ID', 'Molecule_Name']].drop_duplicates()
+
+                # Dropdown to select compound
+                compound_options = [f"{row['ChEMBL_ID']} - {row['Molecule_Name']}"
+                                  for _, row in unique_compounds.iterrows()]
+
+                selected_compound_str = st.selectbox(
+                    "Select a compound to generate 3D structure:",
+                    options=compound_options,
+                    key="mol_gen_selector"
+                )
+
+                # Generate button
+                if st.button("🔬 Generate Molecular Structures", key="btn_generate_structures"):
+                    with st.spinner("Generating molecular structures..."):
+                        try:
+                            from modules.visualization import generate_molecular_structures
+                            generate_molecular_structures(df_results, structure_folder)
+                            st.success("✅ Molecular structures generated successfully!")
+                            st.info("Please refresh the page or rerun to view the structures.")
+                        except Exception as e:
+                            logger.error(f"Error generating structures: {str(e)}")
+                            st.error(f"❌ Error generating structures: {str(e)}")
+                return
+            else:
+                st.warning("No structure information available for this compound.")
+                return
+
         with open(structure_info_path, 'r') as f:
             structure_info = json.load(f)
-        
+
         if not structure_info:
             st.warning("No molecular structures available for this compound.")
             return
@@ -375,19 +407,19 @@ def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = N
             # Create a dropdown to select molecules
             selected_molecule = st.selectbox(
                 "Select Molecule:",
-                options=[f"{mol['ChEMBL ID']} - {mol['Molecule Name']}" for mol in structure_info],
+                options=[f"{mol['ChEMBL_ID']} - {mol['Molecule_Name']}" for mol in structure_info],
                 key="viewer_molecule_selector"
             )
-            
+
             # Get selected molecule info
-            selected_idx = next((i for i, mol in enumerate(structure_info) 
-                               if f"{mol['ChEMBL ID']} - {mol['Molecule Name']}" == selected_molecule), 0)
+            selected_idx = next((i for i, mol in enumerate(structure_info)
+                               if f"{mol['ChEMBL_ID']} - {mol['Molecule_Name']}" == selected_molecule), 0)
             mol_data = structure_info[selected_idx]
-            
+
             # Display molecule info
             st.subheader("Molecule Information")
-            st.write(f"**ChEMBL ID:** {mol_data['ChEMBL ID']}")
-            st.write(f"**Name:** {mol_data['Molecule Name']}")
+            st.write(f"**ChEMBL ID:** {mol_data['ChEMBL_ID']}")
+            st.write(f"**Name:** {mol_data['Molecule_Name']}")
             st.write(f"**Formula:** {mol_data['Formula']}")
             if mol_data['Exact Mass']:
                 st.write(f"**Exact Mass:** {mol_data['Exact Mass']:.4f}")
@@ -397,9 +429,9 @@ def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = N
             st.download_button(
                 "Download Structure Data (JSON)",
                 data=json.dumps(mol_data, indent=2),
-                file_name=f"{mol_data['ChEMBL ID']}_structure.json",
+                file_name=f"{mol_data['ChEMBL_ID']}_structure.json",
                 mime="application/json",
-                key=f"viewer_download_{mol_data['ChEMBL ID']}"
+                key=f"viewer_download_{mol_data['ChEMBL_ID']}"
             )
             
             # Display 2D structure

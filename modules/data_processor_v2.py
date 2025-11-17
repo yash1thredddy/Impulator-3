@@ -31,10 +31,8 @@ from modules.api_client import (
     get_molecule_data,
     get_classification,
     get_chembl_ids,
-    fetch_compound_activities,
-    get_target_name
+    fetch_compound_activities
 )
-from modules.chemical_classifier import get_npclassifier_classification
 from modules.utils import validate_compound_name, validate_smiles
 
 # Import new modular components
@@ -47,12 +45,9 @@ from modules.outlier_detection import (
 )
 from modules.oqpla_scoring import (
     calculate_oqpla_phase1,
-    calculate_oqpla_phase2,
     add_oqpla_interpretation,
-    get_oqpla_summary,
-    create_pdb_summary
+    get_oqpla_summary
 )
-from config import USE_PDB_EVIDENCE, SHOW_PDB_PROGRESS
 from modules.imp_classifier import (
     classify_imp_candidates,
     get_imp_summary,
@@ -174,32 +169,11 @@ def process_single_compound(
 
         # Get classification data
         classification_data = {}
-        np_classification_data = {}
-
         if inchi_key:
             classification_result = get_classification(inchi_key)
             classification_data = extract_classification_data(classification_result)
         else:
             classification_data = extract_classification_data(None)
-
-        # Get NPClassifier data
-        if smiles != 'N/A':
-            try:
-                np_result = get_npclassifier_classification(smiles)
-                if np_result:
-                    np_classification_data = {
-                        'NP_Pathway': np_result.get('NP_Pathway', ''),
-                        'NP_Superclass': np_result.get('NP_Superclass', ''),
-                        'NP_Class': np_result.get('NP_Class', ''),
-                        'NP_isglycoside': np_result.get('NP_isglycoside', False)
-                    }
-                else:
-                    np_classification_data = {'NP_Pathway': '', 'NP_Superclass': '', 'NP_Class': '', 'NP_isglycoside': False}
-            except Exception as e:
-                logger.error(f"Error getting NPClassifier data for {chembl_id}: {str(e)}")
-                np_classification_data = {'NP_Pathway': '', 'NP_Superclass': '', 'NP_Class': '', 'NP_isglycoside': False}
-        else:
-            np_classification_data = {'NP_Pathway': '', 'NP_Superclass': '', 'NP_Class': '', 'NP_isglycoside': False}
 
         # Fetch activities
         bioactivities = fetch_compound_activities(chembl_id, activity_types)
@@ -221,17 +195,11 @@ def process_single_compound(
                         heavy_atoms=heavy_atoms
                     )
 
-                    # Calculate QED
-                    qed = QED.qed(Chem.MolFromSmiles(smiles)) if smiles != 'N/A' else np.nan
+                    # Calculate QED (guard against invalid molecules)
+                    mol_for_qed = Chem.MolFromSmiles(smiles) if smiles != 'N/A' else None
+                    qed = QED.qed(mol_for_qed) if mol_for_qed is not None else np.nan
 
                     # Build result dictionary
-                    target_chembl_id = act.get('target_chembl_id', '')
-                    # Use target name from bioactivity (included in API response now)
-                    # Falls back to separate fetch if not present (backward compatibility)
-                    target_name = act.get('target_pref_name', '')
-                    if not target_name and target_chembl_id:
-                        target_name = get_target_name(target_chembl_id)
-
                     result_dict = {
                         'ChEMBL_ID': chembl_id,
                         'Molecule_Name': molecule_name,
@@ -241,8 +209,7 @@ def process_single_compound(
                         'Activity_Type': act.get('standard_type', 'Unknown'),
                         'Activity_nM': value,
                         'pActivity': pActivity,
-                        'Target_ChEMBL_ID': target_chembl_id,
-                        'Target_Name': target_name or target_chembl_id,  # Fallback to ID if name not found
+                        'Target_ChEMBL_ID': act.get('target_chembl_id', ''),
                         'QED': qed,
                         'HBD': hbd,
                         'HBA': hba,
@@ -254,23 +221,19 @@ def process_single_compound(
                         'NSEI': efficiency_metrics['NSEI'],
                         'NBEI': efficiency_metrics['NBEI'],  # CORRECTED FORMULA
                         'nBEI_viz': efficiency_metrics['nBEI_viz'],  # For visualization only
-                        # Add ClassyFire classification
+                        # Add classification
                         'Kingdom': classification_data.get('Kingdom', ''),
                         'Superclass': classification_data.get('Superclass', ''),
                         'Class': classification_data.get('Class', ''),
-                        'Subclass': classification_data.get('Subclass', ''),
-                        # Add NPClassifier classification
-                        'NP_Pathway': np_classification_data.get('NP_Pathway', ''),
-                        'NP_Superclass': np_classification_data.get('NP_Superclass', ''),
-                        'NP_Class': np_classification_data.get('NP_Class', ''),
-                        'NP_isglycoside': np_classification_data.get('NP_isglycoside', False)
+                        'Subclass': classification_data.get('Subclass', '')
                     }
 
                     results.append(result_dict)
 
         # If no activity data, add basic compound info
         if not results:
-            qed = QED.qed(Chem.MolFromSmiles(smiles)) if smiles != 'N/A' else np.nan
+            mol_for_qed = Chem.MolFromSmiles(smiles) if smiles != 'N/A' else None
+            qed = QED.qed(mol_for_qed) if mol_for_qed is not None else np.nan
             results.append({
                 'ChEMBL_ID': chembl_id,
                 'Molecule_Name': molecule_name,
@@ -281,7 +244,6 @@ def process_single_compound(
                 'Activity_nM': np.nan,
                 'pActivity': np.nan,
                 'Target_ChEMBL_ID': '',
-                'Target_Name': '',
                 'QED': qed,
                 'HBD': hbd,
                 'HBA': hba,
@@ -295,11 +257,7 @@ def process_single_compound(
                 'Kingdom': classification_data.get('Kingdom', ''),
                 'Superclass': classification_data.get('Superclass', ''),
                 'Class': classification_data.get('Class', ''),
-                'Subclass': classification_data.get('Subclass', ''),
-                'NP_Pathway': np_classification_data.get('NP_Pathway', ''),
-                'NP_Superclass': np_classification_data.get('NP_Superclass', ''),
-                'NP_Class': np_classification_data.get('NP_Class', ''),
-                'NP_isglycoside': np_classification_data.get('NP_isglycoside', False)
+                'Subclass': classification_data.get('Subclass', '')
             })
 
         return results
@@ -394,15 +352,9 @@ def calculate_advanced_metrics(df: pd.DataFrame) -> pd.DataFrame:
     logger.info("Detecting statistical outliers...")
     df = detect_efficiency_outliers(df, metrics=['SEI', 'BEI', 'NSEI', 'NBEI'])
 
-    # STEP 3: Calculate O[Q/P/L]A scores (Phase 2 with PDB if enabled)
-    if USE_PDB_EVIDENCE:
-        logger.info("Calculating O[Q/P/L]A scores (Phase 2 with PDB Evidence)...")
-        st.info("🔬 Querying RCSB PDB for structural evidence...")
-        df = calculate_oqpla_phase2(df, use_pdb=True, show_progress=SHOW_PDB_PROGRESS)
-    else:
-        logger.info("Calculating O[Q/P/L]A scores (Phase 1 only)...")
-        df = calculate_oqpla_phase1(df, use_normalized_weights=True)
-
+    # STEP 3: Calculate O[Q/P/L]A scores
+    logger.info("Calculating O[Q/P/L]A scores...")
+    df = calculate_oqpla_phase1(df, use_normalized_weights=True)
     df = add_oqpla_interpretation(df)
 
     # STEP 4: Classify IMPs
@@ -416,7 +368,7 @@ def calculate_advanced_metrics(df: pd.DataFrame) -> pd.DataFrame:
 def process_compound(
     compound_name: str,
     smiles: str,
-    similarity_threshold: int = 90,
+    similarity_threshold: int = 80,
     activity_types: List[str] = ACTIVITY_TYPES
 ) -> Optional[pd.DataFrame]:
     """
@@ -503,65 +455,9 @@ def process_compound(
                 st.session_state.processing_progress = 0.8
 
         # STEP 5: Save results
-        # Save separate PDB summary (compound-level) if PDB data exists
-        if USE_PDB_EVIDENCE and 'PDB_Score' in df_results.columns:
-            try:
-                pdb_summary_df = create_pdb_summary(df_results)
-                if not pdb_summary_df.empty:
-                    pdb_summary_filename = os.path.join(compound_folder, f"{compound_name}_pdb_summary.csv")
-                    pdb_summary_df.to_csv(pdb_summary_filename, index=False)
-                    logger.info(f"Saved PDB summary ({len(pdb_summary_df)} unique compounds) to {pdb_summary_filename}")
-
-                    # Save detailed PDB structures table with title, DOI, UniProt, etc.
-                    try:
-                        from modules.pdb_client import get_detailed_pdb_structures
-
-                        # Get unique SMILES that have PDB structures
-                        unique_smiles_with_pdb = pdb_summary_df[pdb_summary_df['PDB_Num_Structures'] > 0]['SMILES'].tolist()
-
-                        all_pdb_details = []
-                        for smiles in unique_smiles_with_pdb:
-                            # Get compound name for this SMILES
-                            compound_info = df_results[df_results['SMILES'] == smiles].iloc[0]
-                            compound_chembl = compound_info['ChEMBL_ID']
-                            compound_mol_name = compound_info['Molecule_Name']
-
-                            # Get detailed PDB structures
-                            pdb_details = get_detailed_pdb_structures(smiles)
-
-                            # Add compound identification to each structure
-                            for structure in pdb_details:
-                                structure['ChEMBL_ID'] = compound_chembl
-                                structure['Molecule_Name'] = compound_mol_name
-                                structure['SMILES'] = smiles
-                                all_pdb_details.append(structure)
-
-                        if all_pdb_details:
-                            pdb_details_df = pd.DataFrame(all_pdb_details)
-                            # Reorder columns for better readability (DOI removed, sorted by quality)
-                            cols_order = ['ChEMBL_ID', 'Molecule_Name', 'PDB_ID', 'Title', 'Resolution',
-                                         'Quality', 'Experimental_Method', 'UniProt_IDs', 'URL', 'SMILES']
-                            pdb_details_df = pdb_details_df[cols_order]
-
-                            pdb_details_filename = os.path.join(compound_folder, f"{compound_name}_pdb_structures_detailed.csv")
-                            pdb_details_df.to_csv(pdb_details_filename, index=False)
-                            logger.info(f"Saved detailed PDB structures ({len(pdb_details_df)} structures, sorted by quality) to {pdb_details_filename}")
-                    except Exception as e:
-                        logger.error(f"Error creating detailed PDB structures table: {str(e)}")
-
-            except Exception as e:
-                logger.error(f"Error creating PDB summary: {str(e)}")
-
-        # Remove PDB detail columns from main bioactivity CSV (keep only PDB_Score for O[Q/P/L]A)
-        pdb_detail_columns = [
-            'PDB_Num_Structures', 'PDB_High_Quality', 'PDB_Medium_Quality',
-            'PDB_Poor_Quality', 'PDB_IDs', 'PDB_Best_Resolution', 'PDB_Contribution'
-        ]
-        df_to_save = df_results.drop(columns=[col for col in pdb_detail_columns if col in df_results.columns], errors='ignore')
-
         results_filename = os.path.join(compound_folder, f"{compound_name}_complete_results.csv")
-        df_to_save.to_csv(results_filename, index=False)
-        logger.info(f"Saved complete bioactivity results to {results_filename} ({len(df_to_save.columns)} columns)")
+        df_results.to_csv(results_filename, index=False)
+        logger.info(f"Saved complete results to {results_filename}")
 
         # STEP 6: Save metadata with statistics
         cohort_stats = calculate_cohort_statistics(df_results)
@@ -587,8 +483,6 @@ def process_compound(
         with open(metadata_filename, 'w') as f:
             json.dump(metadata, f, indent=4)
         logger.info(f"Saved metadata to {metadata_filename}")
-
-        # Visualizations are now generated on-demand in the UI, not saved to disk during processing
 
         # STEP 7: Generate IMP report
         report = generate_imp_report(df_results, compound_name)

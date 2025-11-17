@@ -103,7 +103,7 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
     """
     try:
         # Check for required columns
-        required_cols = ['SEI', 'BEI', 'ChEMBL ID', 'Molecule Name']
+        required_cols = ['SEI', 'BEI', 'ChEMBL_ID', 'Molecule_Name']
         missing_cols = [col for col in required_cols if col not in df_results.columns]
         if missing_cols:
             logger.warning(f"Missing required columns for efficiency plots: {missing_cols}")
@@ -124,9 +124,9 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
             valid_data, 
             x='SEI', 
             y='BEI',
-            color='ChEMBL ID',  # Use ChEMBL ID for color coding
-            hover_name='Molecule Name',
-            hover_data=['Activity Type', 'Activity (nM)', 'Target ChEMBL ID'],
+            color='ChEMBL_ID',  # Use ChEMBL ID for color coding
+            hover_name='Molecule_Name',
+            hover_data=['Activity_Type', 'Activity_nM', 'Target_ChEMBL_ID'],
             title='Surface Efficiency Index (SEI) vs Binding Efficiency Index (BEI)',
             labels={'SEI': 'Surface Efficiency Index', 'BEI': 'Binding Efficiency Index'},
             width=900,
@@ -134,8 +134,8 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
         )
         
         # Add trendlines for each compound - only if there are multiple points
-        for chembl_id in valid_data['ChEMBL ID'].unique():
-            df_subset = valid_data[valid_data['ChEMBL ID'] == chembl_id]
+        for chembl_id in valid_data['ChEMBL_ID'].unique():
+            df_subset = valid_data[valid_data['ChEMBL_ID'] == chembl_id]
             if len(df_subset) > 1:  # Only add trendline if there are multiple points
                 sei_bei_fig.add_trace(
                     go.Scatter(
@@ -153,58 +153,46 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
             template='plotly_white',
             showlegend=False  # Remove legend
         )
+
+        # Plot rendered on-demand in UI, not saved to disk
         
-        # Save as HTML and JSON for interactive viewing
-        try:
-            html_path = os.path.join(folder_name, 'sei_vs_bei_scatter_plot.html')
-            sei_bei_fig.write_html(html_path)
-            logger.info(f"Saved HTML to {html_path}")
-            
-            json_path = os.path.join(folder_name, 'sei_vs_bei_scatter_plot.json')
-            sei_bei_fig_json = sei_bei_fig.to_json()
-            with open(json_path, 'w') as f:
-                f.write(sei_bei_fig_json)
-            logger.info(f"Saved JSON to {json_path}")
-        except Exception as e:
-            logger.error(f"Error saving SEI vs BEI plot files: {str(e)}")
-        
-        # Check for NSEI and nBEI columns
-        nsei_nbei_cols = ['NSEI', 'nBEI']
+        # Check for NSEI and NBEI columns
+        nsei_nbei_cols = ['NSEI', 'NBEI']
         if not all(col in df_results.columns for col in nsei_nbei_cols):
-            logger.warning(f"Missing columns for NSEI vs nBEI plot: {[col for col in nsei_nbei_cols if col not in df_results.columns]}")
+            logger.warning(f"Missing columns for NSEI vs NBEI plot: {[col for col in nsei_nbei_cols if col not in df_results.columns]}")
             return
-            
-        # Filter out rows with NaN values in NSEI/nBEI columns
-        valid_nsei_nbei = df_results.dropna(subset=['NSEI', 'nBEI']).copy()
-        
+
+        # Filter out rows with NaN values in NSEI/NBEI columns
+        valid_nsei_nbei = df_results.dropna(subset=['NSEI', 'NBEI']).copy()
+
         if valid_nsei_nbei.empty:
-            logger.warning("No valid data points for NSEI vs nBEI plot after dropping NaN values")
+            logger.warning("No valid data points for NSEI vs NBEI plot after dropping NaN values")
             return
-            
-        logger.info(f"Creating NSEI vs nBEI plot with {len(valid_nsei_nbei)} valid data points")
-        
-        # NSEI vs nBEI scatter plot
+
+        logger.info(f"Creating NSEI vs NBEI plot with {len(valid_nsei_nbei)} valid data points")
+
+        # NSEI vs NBEI scatter plot
         nsei_nbei_fig = px.scatter(
-            valid_nsei_nbei, 
-            x='NSEI', 
-            y='nBEI',
-            color='ChEMBL ID',  # Use ChEMBL ID for color coding
-            hover_name='Molecule Name',
-            hover_data=['Activity Type', 'Activity (nM)', 'Target ChEMBL ID'],
-            title='Normalized Surface Efficiency Index (NSEI) vs Normalized Binding Efficiency Index (nBEI)',
-            labels={'NSEI': 'Normalized SEI', 'nBEI': 'Normalized BEI'},
+            valid_nsei_nbei,
+            x='NSEI',
+            y='NBEI',
+            color='ChEMBL_ID',  # Use ChEMBL ID for color coding
+            hover_name='Molecule_Name',
+            hover_data=['Activity_Type', 'Activity_nM', 'Target_ChEMBL_ID'],
+            title='Normalized Surface Efficiency Index (NSEI) vs Normalized Binding Efficiency Index (NBEI)',
+            labels={'NSEI': 'Normalized SEI', 'NBEI': 'Normalized BEI'},
             width=900,
             height=700
         )
         
         # Add trendlines for each compound - only if there are multiple points
-        for chembl_id in valid_nsei_nbei['ChEMBL ID'].unique():
-            df_subset = valid_nsei_nbei[valid_nsei_nbei['ChEMBL ID'] == chembl_id]
+        for chembl_id in valid_nsei_nbei['ChEMBL_ID'].unique():
+            df_subset = valid_nsei_nbei[valid_nsei_nbei['ChEMBL_ID'] == chembl_id]
             if len(df_subset) > 1:  # Only add trendline if there are multiple points
                 nsei_nbei_fig.add_trace(
                     go.Scatter(
                         x=df_subset['NSEI'],
-                        y=df_subset['nBEI'],
+                        y=df_subset['NBEI'],
                         mode='lines',
                         showlegend=False,
                         opacity=0.4,
@@ -212,25 +200,13 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
                     )
                 )
         
-        # Remove legend as requested for NSEI vs nBEI plot
+        # Remove legend as requested for NSEI vs NBEI plot
         nsei_nbei_fig.update_layout(
             template='plotly_white',
             showlegend=False  # Remove legend
         )
-        
-        # Save as HTML and JSON
-        try:
-            html_path = os.path.join(folder_name, 'nsei_vs_nbei_scatter_plot.html')
-            nsei_nbei_fig.write_html(html_path)
-            logger.info(f"Saved HTML to {html_path}")
-            
-            json_path = os.path.join(folder_name, 'nsei_vs_nbei_scatter_plot.json')
-            nsei_nbei_fig_json = nsei_nbei_fig.to_json()
-            with open(json_path, 'w') as f:
-                f.write(nsei_nbei_fig_json)
-            logger.info(f"Saved JSON to {json_path}")
-        except Exception as e:
-            logger.error(f"Error saving NSEI vs nBEI plot files: {str(e)}")
+
+        # Plot rendered on-demand in UI, not saved to disk
             
     except Exception as e:
         logger.error(f"Error generating efficiency scatter plots: {str(e)}", exc_info=True)
@@ -246,48 +222,45 @@ def plot_activity_visualizations(df_results: pd.DataFrame, activity_folder: str)
     """
     try:
         # Skip if required columns are missing
-        if 'Activity Type' not in df_results.columns or 'pActivity' not in df_results.columns:
+        if 'Activity_Type' not in df_results.columns or 'pActivity' not in df_results.columns:
             logger.warning("Activity columns missing, skipping activity visualizations")
             return
         
         # 1. Activity Distribution box plot
         activity_box_fig = px.box(
             df_results, 
-            x='Activity Type', 
+            x='Activity_Type', 
             y='pActivity',
-            color='Activity Type',
+            color='Activity_Type',
             points='all',
-            hover_data=['ChEMBL ID', 'Molecule Name'],
+            hover_data=['ChEMBL_ID', 'Molecule_Name'],
             title='Activity Distribution by Type',
-            labels={'pActivity': 'pActivity (-log10[M])', 'Activity Type': 'Activity Type'},
+            labels={'pActivity': 'pActivity (-log10[M])', 'Activity_Type': 'Activity_Type'},
             height=600
         )
         
         activity_box_fig.update_layout(
             template='plotly_white',
-            xaxis_title='Activity Type',
+            xaxis_title='Activity_Type',
             yaxis_title='pActivity (-log10[M])'
         )
-        
-        activity_box_fig.write_html(os.path.join(activity_folder, 'activity_distribution.html'))
-        activity_box_fig_json = activity_box_fig.to_json()
-        with open(os.path.join(activity_folder, 'activity_distribution.json'), 'w') as f:
-            f.write(activity_box_fig_json)
+
+        # Plot rendered on-demand in UI, not saved to disk
         
         # 2. Add PSAoMW vs QED plot (new plot)
-        if all(col in df_results.columns for col in ['TPSA', 'Molecular Weight', 'QED']):
+        if all(col in df_results.columns for col in ['TPSA', 'Molecular_Weight', 'QED']):
             # Create PSAoMW column
             df_plot = df_results.copy()
-            df_plot['PSAoMW'] = df_plot['TPSA'] / df_plot['Molecular Weight']
+            df_plot['PSAoMW'] = df_plot['TPSA'] / df_plot['Molecular_Weight']
             
             # Create the plot
             psaomw_qed_fig = px.scatter(
                 df_plot.dropna(subset=['PSAoMW', 'QED']),
                 x='QED',
                 y='PSAoMW',
-                color='Activity Type',
-                hover_name='ChEMBL ID',
-                hover_data=['Molecule Name', 'Activity (nM)', 'TPSA', 'Molecular Weight'],
+                color='Activity_Type',
+                hover_name='ChEMBL_ID',
+                hover_data=['Molecule_Name', 'Activity_nM', 'TPSA', 'Molecular_Weight'],
                 title='PSA/MW vs Drug-likeness (QED)',
                 labels={'PSAoMW': 'PSA/MW Ratio', 'QED': 'QED (Drug-likeness)'},
                 height=600
@@ -296,11 +269,8 @@ def plot_activity_visualizations(df_results: pd.DataFrame, activity_folder: str)
             psaomw_qed_fig.update_layout(
                 template='plotly_white'
             )
-            
-            psaomw_qed_fig.write_html(os.path.join(activity_folder, 'PSAoMW_vs_QED.html'))
-            psaomw_qed_fig_json = psaomw_qed_fig.to_json()
-            with open(os.path.join(activity_folder, 'PSAoMW_vs_QED.json'), 'w') as f:
-                f.write(psaomw_qed_fig_json)
+
+            # Plot rendered on-demand in UI, not saved to disk
     
     except Exception as e:
         logger.error(f"Error generating activity visualizations: {str(e)}")
@@ -319,8 +289,8 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
     try:
         # Create display name for legend - use Molecule Name if available, ChEMBL ID if not
         df_results['DisplayName'] = df_results.apply(
-            lambda row: row['Molecule Name'] if pd.notna(row['Molecule Name']) and row['Molecule Name'] != 'Unknown Name' 
-            else row['ChEMBL ID'], 
+            lambda row: row['Molecule_Name'] if pd.notna(row['Molecule_Name']) and row['Molecule_Name'] != 'Unknown Name' 
+            else row['ChEMBL_ID'], 
             axis=1
         )
         
@@ -336,7 +306,7 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                 title_prefix: Prefix for plot titles
             """
             # Get unique compounds
-            unique_chembl_ids = df['ChEMBL ID'].unique()
+            unique_chembl_ids = df['ChEMBL_ID'].unique()
             
             # Skip if no compounds
             if len(unique_chembl_ids) == 0:
@@ -369,7 +339,7 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                 # Create a box plot for each cluster
                 for i, cluster in enumerate(compound_clusters):
                     # Filter data for this cluster
-                    cluster_data = valid_data[valid_data['ChEMBL ID'].isin(cluster)]
+                    cluster_data = valid_data[valid_data['ChEMBL_ID'].isin(cluster)]
                     
                     # Skip if no data for this cluster
                     if cluster_data.empty:
@@ -378,7 +348,7 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                     # Process each unique ChEMBL ID to avoid duplicates
                     plot_data = []
                     for chembl_id in cluster:
-                        compound_data = cluster_data[cluster_data['ChEMBL ID'] == chembl_id]
+                        compound_data = cluster_data[cluster_data['ChEMBL_ID'] == chembl_id]
                         if not compound_data.empty:
                             # Use the first occurrence for display name
                             display_name = compound_data['DisplayName'].iloc[0]
@@ -386,13 +356,13 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                             # Add each data point with needed metadata
                             for _, row in compound_data.iterrows():
                                 plot_data.append({
-                                    'ChEMBL ID': chembl_id,
+                                    'ChEMBL_ID': chembl_id,
                                     'DisplayName': display_name,
                                     'Value': row[metric],
                                     'Metric': metric,
-                                    'Molecule Name': row['Molecule Name'],
-                                    'Activity Type': row.get('Activity Type', 'Unknown'),
-                                    'Activity (nM)': row.get('Activity (nM)', float('nan'))
+                                    'Molecule_Name': row['Molecule_Name'],
+                                    'Activity_Type': row.get('Activity_Type', 'Unknown'),
+                                    'Activity_nM': row.get('Activity_nM', float('nan'))
                                 })
                     
                     # Skip if no valid data for plotting
@@ -405,20 +375,20 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                     # Create boxplot
                     fig = px.box(
                         plot_df,
-                        x='ChEMBL ID',
+                        x='ChEMBL_ID',
                         y='Value',
-                        color='ChEMBL ID',
+                        color='ChEMBL_ID',
                         points='all',
-                        hover_data=['Molecule Name', 'Activity Type', 'Activity (nM)'],
+                        hover_data=['Molecule_Name', 'Activity_Type', 'Activity_nM'],
                         title=f'{metric_title} Distribution (Group {i+1} of {len(compound_clusters)})',
-                        labels={'Value': metric, 'ChEMBL ID': 'Compound'},
+                        labels={'Value': metric, 'ChEMBL_ID': 'Compound'},
                         height=600
                     )
                     
                     # Update the legend to use DisplayName
                     for trace in fig.data:
                         chembl_id = trace.name
-                        display_names = plot_df[plot_df['ChEMBL ID'] == chembl_id]['DisplayName'].unique()
+                        display_names = plot_df[plot_df['ChEMBL_ID'] == chembl_id]['DisplayName'].unique()
                         if len(display_names) > 0:
                             trace.name = display_names[0]
                     
@@ -442,15 +412,7 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                             font=dict(size=12)
                         )
                     
-                    # Save files
-                    metric_lower = metric.lower()
-                    html_path = os.path.join(folder, f'{metric_lower}_boxplot_group{i+1}.html')
-                    fig.write_html(html_path)
-                    
-                    json_path = os.path.join(folder, f'{metric_lower}_boxplot_group{i+1}.json')
-                    fig_json = fig.to_json()
-                    with open(json_path, 'w') as f:
-                        f.write(fig_json)
+                    # Plot rendered on-demand in UI, not saved to disk
         
         # Create SEI/NSEI boxplots
         if any(col in df_results.columns for col in ['SEI', 'NSEI']):
@@ -484,7 +446,7 @@ def generate_molecular_structures(df_results: pd.DataFrame, structure_folder: st
     """
     try:
         # Get unique ChEMBL IDs and corresponding SMILES
-        unique_chembl_data = df_results[['ChEMBL ID', 'SMILES', 'Molecule Name']].drop_duplicates().reset_index(drop=True)
+        unique_chembl_data = df_results[['ChEMBL_ID', 'SMILES', 'Molecule_Name']].drop_duplicates().reset_index(drop=True)
         
         # Create a directory for 2D images and 3D models
         os.makedirs(os.path.join(structure_folder, '2D'), exist_ok=True)
@@ -494,9 +456,9 @@ def generate_molecular_structures(df_results: pd.DataFrame, structure_folder: st
         structure_info = []
         
         for _, row in unique_chembl_data.iterrows():
-            chembl_id = row['ChEMBL ID']
+            chembl_id = row['ChEMBL_ID']
             smiles = row['SMILES']
-            mol_name = row['Molecule Name'] if pd.notna(row['Molecule Name']) else chembl_id
+            mol_name = row['Molecule_Name'] if pd.notna(row['Molecule_Name']) else chembl_id
             
             if not pd.isna(smiles) and smiles != 'N/A':
                 try:
@@ -522,8 +484,8 @@ def generate_molecular_structures(df_results: pd.DataFrame, structure_folder: st
                         # Create JSON with molecule data
                         json_path = os.path.join(structure_folder, f"{chembl_id}.json")
                         mol_props = {
-                            'ChEMBL ID': chembl_id,
-                            'Molecule Name': mol_name,
+                            'ChEMBL_ID': chembl_id,
+                            'Molecule_Name': mol_name,
                             'SMILES': smiles,
                             'InChI': Chem.MolToInchi(mol) if mol else '',
                             'InChIKey': Chem.MolToInchiKey(mol) if mol else '',
@@ -916,13 +878,13 @@ def show_molecular_structures(compound_folder: str) -> None:
         # Create a dropdown to select molecules
         selected_molecule = st.selectbox(
             "Select Molecule:",
-            options=[f"{mol['ChEMBL ID']} - {mol['Molecule Name']}" for mol in structure_info],
+            options=[f"{mol['ChEMBL_ID']} - {mol['Molecule_Name']}" for mol in structure_info],
             key="analysis_molecule_selector"
         )
         
         # Get selected molecule info
         selected_idx = next((i for i, mol in enumerate(structure_info) 
-                            if f"{mol['ChEMBL ID']} - {mol['Molecule Name']}" == selected_molecule), 0)
+                            if f"{mol['ChEMBL_ID']} - {mol['Molecule_Name']}" == selected_molecule), 0)
         mol_data = structure_info[selected_idx]
         
         # Display molecule info
@@ -930,8 +892,8 @@ def show_molecular_structures(compound_folder: str) -> None:
         
         with col1:
             st.subheader("Molecule Information")
-            st.write(f"**ChEMBL ID:** {mol_data['ChEMBL ID']}")
-            st.write(f"**Name:** {mol_data['Molecule Name']}")
+            st.write(f"**ChEMBL ID:** {mol_data['ChEMBL_ID']}")
+            st.write(f"**Name:** {mol_data['Molecule_Name']}")
             st.write(f"**Formula:** {mol_data['Formula']}")
             st.write(f"**Exact Mass:** {mol_data['Exact Mass']:.4f}")
             st.write(f"**SMILES:** `{mol_data['SMILES']}`")
@@ -940,9 +902,9 @@ def show_molecular_structures(compound_folder: str) -> None:
             st.download_button(
                 "Download Structure Data (JSON)",
                 data=json.dumps(mol_data, indent=2),
-                file_name=f"{mol_data['ChEMBL ID']}_structure.json",
+                file_name=f"{mol_data['ChEMBL_ID']}_structure.json",
                 mime="application/json",
-                key=f"analysis_download_{mol_data['ChEMBL ID']}"
+                key=f"analysis_download_{mol_data['ChEMBL_ID']}"
             )
         
         with col2:
@@ -1003,3 +965,124 @@ def st_3dmol_viewer(pdb_block: str) -> None:
     
     # Display HTML in Streamlit
     st.components.v1.html(html_content, height=450)
+
+def show_static_plot_with_controls(df: pd.DataFrame, x_col: str, y_col: str, compound_folder: str):
+    """
+    Display scatter plot with interactive color controls and clickable legend.
+    
+    Args:
+        df: DataFrame with compound data
+        x_col: Column name for X-axis (e.g., "SEI")
+        y_col: Column name for Y-axis (e.g., "BEI")
+        compound_folder: Path to compound folder for saving
+    """
+    import streamlit as st
+    import plotly.express as px
+    import plotly.graph_objects as go
+    import pandas as pd
+    
+    st.markdown(f"### {x_col} vs {y_col}")
+    
+    # Color-by controls
+    st.markdown("#### 🎨 Customization Options")
+    
+    col_ctrl1, col_ctrl2 = st.columns(2)
+    
+    with col_ctrl1:
+        # Get categorical columns for color options
+        categorical_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
+        categorical_cols.extend(['Outlier_Count'])  # Add numeric that acts as categorical
+        categorical_cols = [col for col in categorical_cols if col in df.columns]
+        
+        color_options = ["None (All Same Color)"] + categorical_cols
+        color_by = st.selectbox(
+            "Color by:",
+            color_options,
+            key=f"color_by_{x_col}_{y_col}",
+            help="Choose how to color the points. Click legend items to show/hide groups!"
+        )
+    
+    with col_ctrl2:
+        show_trendline = st.checkbox(
+            "Show trendline",
+            value=False,
+            key=f"trendline_{x_col}_{y_col}"
+        )
+    
+    # Filter data
+    plot_df = df.dropna(subset=[x_col, y_col]).copy()
+    
+    if plot_df.empty:
+        st.warning(f"No valid data for {x_col} vs {y_col}")
+        return
+    
+    # Create plot
+    if color_by == "None (All Same Color)":
+        fig = px.scatter(
+            plot_df,
+            x=x_col,
+            y=y_col,
+            hover_data=['ChEMBL_ID', 'Molecule_Name'] if all(c in plot_df.columns for c in ['ChEMBL_ID', 'Molecule_Name']) else None,
+            title=f'{y_col} vs {x_col}',
+            trendline="ols" if show_trendline else None,
+            height=600,
+            width=900
+        )
+    else:
+        fig = px.scatter(
+            plot_df,
+            x=x_col,
+            y=y_col,
+            color=color_by,
+            hover_data=['ChEMBL_ID', 'Molecule_Name'] if all(c in plot_df.columns for c in ['ChEMBL_ID', 'Molecule_Name']) else None,
+            title=f'{y_col} vs {x_col} (Colored by {color_by})',
+            trendline="ols" if show_trendline else None,
+            height=600,
+            width=900
+        )
+    
+    # Customize layout for better legend interaction
+    fig.update_layout(
+        template='plotly_white',
+        showlegend=True if color_by != "None (All Same Color)" else False,
+        legend=dict(
+            title=dict(text=color_by if color_by != "None (All Same Color)" else ""),
+            yanchor="top",
+            y=0.99,
+            xanchor="left",
+            x=1.02
+        ),
+        hovermode='closest'
+    )
+    
+    # Make legend interactive (click to hide/show)
+    if color_by != "None (All Same Color)":
+        fig.update_traces(
+            marker=dict(size=8, line=dict(width=0.5, color='DarkSlateGrey'))
+        )
+    
+    # Display plot
+    st.plotly_chart(fig, use_container_width=True)
+    
+    # Add helpful info
+    if color_by != "None (All Same Color)":
+        st.info("""
+        💡 **Legend Interaction**: 
+        - **Single click** on legend item = Hide/show that group
+        - **Double click** on legend item = Show only that group (hide all others)
+        - **Double click on plot** = Reset to show all groups
+        
+        This allows you to focus on specific activity types, targets, or classifications!
+        """)
+    
+    # Show summary statistics grouped by color
+    if color_by != "None (All Same Color)":
+        with st.expander("📊 Statistics by Group"):
+            grouped_stats = plot_df.groupby(color_by).agg({
+                x_col: ['count', 'mean', 'std', 'min', 'max'],
+                y_col: ['mean', 'std', 'min', 'max']
+            }).round(3)
+            
+            # Flatten multi-index columns
+            grouped_stats.columns = ['_'.join(col).strip() for col in grouped_stats.columns.values]
+            st.dataframe(grouped_stats, use_container_width=True)
