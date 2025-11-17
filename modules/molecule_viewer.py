@@ -360,21 +360,12 @@ def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = N
             if df_results is not None and not df_results.empty:
                 st.info("💡 Molecular structures have not been generated yet.")
 
-                # Get unique compounds from results
+                # Get unique compounds count for display
                 unique_compounds = df_results[['ChEMBL_ID', 'Molecule_Name']].drop_duplicates()
+                st.markdown(f"**{len(unique_compounds)} unique compound(s)** found in results.")
 
-                # Dropdown to select compound
-                compound_options = [f"{row['ChEMBL_ID']} - {row['Molecule_Name']}"
-                                  for _, row in unique_compounds.iterrows()]
-
-                selected_compound_str = st.selectbox(
-                    "Select a compound to generate 3D structure:",
-                    options=compound_options,
-                    key="mol_gen_selector"
-                )
-
-                # Generate button
-                if st.button("🔬 Generate Molecular Structures", key="btn_generate_structures"):
+                # Generate button (generates structures for ALL compounds)
+                if st.button("🔬 Generate All Molecular Structures", key="btn_generate_structures"):
                     with st.spinner("Generating molecular structures..."):
                         try:
                             from modules.visualization import generate_molecular_structures

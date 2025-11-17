@@ -170,9 +170,10 @@ def create_custom_scatter(df: pd.DataFrame, numeric_cols: List[str],
 
         with col_adv2:
             enable_clustering = st.checkbox("Enable clustering", value=False)
-            n_clusters = 3
             if enable_clustering:
                 n_clusters = st.slider("Number of clusters:", 2, 10, 3)
+            else:
+                n_clusters = 3  # Default when clustering disabled
 
     # Apply clustering if enabled
     if enable_clustering:

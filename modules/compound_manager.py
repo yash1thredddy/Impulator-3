@@ -17,7 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from config import RESULTS_DIR, ACTIVITY_TYPES
 from modules.data_processor import process_compound, load_results
-from modules.utils import validate_compound_name, validate_smiles, validate_inchi, inchi_to_smiles, sanitize_compound_name
+from modules.utils import validate_compound_name, sanitize_compound_name
 
 # Configure logging
 logger = logging.getLogger(__name__)
