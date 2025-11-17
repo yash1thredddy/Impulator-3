@@ -38,7 +38,7 @@ def init_session_state():
         "last_processed_compound": None,
         "show_new_compound_alert": False,
         "selected_activity_types": ACTIVITY_TYPES,  # Default to all activity types
-        "last_similarity_threshold": 80,  # Default similarity threshold
+        "last_similarity_threshold": 90,  # Default similarity threshold
         "molecule_viewer_tab": "3D",  # Default tab for molecule viewer
         "show_delete_confirmation": False,  # Add this new line
         "deletion_success": False  # Add this new line
@@ -190,7 +190,7 @@ def display_home_view():
                                 if os.path.exists(metadata_file):
                                     with open(metadata_file, 'r') as f:
                                         metadata = json.load(f)
-                                        sim_threshold = metadata.get('similarity_threshold', 80)
+                                        sim_threshold = metadata.get('similarity_threshold', 90)
                                         st.markdown(f"**Sim Threshold:** {sim_threshold}%")
                                 else:
                                     st.markdown("**Sim Threshold:** N/A")
@@ -251,13 +251,21 @@ def display_delete_confirmation():
                 from modules.utils import delete_compound
                 
                 success = delete_compound(st.session_state.selected_compound)
-                
+
                 if success:
                     st.session_state.deletion_success = True
                     st.session_state.show_delete_confirmation = False
                     st.session_state.current_view = "home"
                     st.success(f"✅ {st.session_state.selected_compound} has been deleted successfully.")
                     st.session_state.selected_compound = None
+
+                    # Clear any stale compound-related session state
+                    if 'df_results' in st.session_state:
+                        del st.session_state.df_results
+                    if 'last_processed_compound' in st.session_state:
+                        del st.session_state.last_processed_compound
+                    if 'show_new_compound_alert' in st.session_state:
+                        st.session_state.show_new_compound_alert = False
                 else:
                     st.error(f"Failed to delete {st.session_state.selected_compound}. Please try again.")
                 
@@ -320,78 +328,334 @@ def display_compound_details_view():
     
     # Interactive plots tab
     with tabs[1]:
-        # Create subtabs for different plot categories
-        plot_tabs = st.tabs([
-            "📊 Quick Plots",
-            "🎨 Custom Builder",
-            "Activity Plots",
-            "SEI Visualizations",
-            "BEI Visualizations"
-        ])
+        st.markdown("## 📊 Visualizations")
+        st.info("💡 Expand sections below to generate plots on-demand with customizable parameters")
 
-        # Quick plots tab - Default scatter plots
-        with plot_tabs[0]:
-            st.markdown("### Quick Access Plots")
-            st.markdown("*Pre-configured efficiency metric visualizations with customization*")
+        # Initialize session state for cluster size
+        if 'cluster_size' not in st.session_state:
+            st.session_state.cluster_size = 5
 
-            # Add quick buttons for common plots
-            col1, col2 = st.columns(2)
+        # Activity Distribution Expander
+        with st.expander("📈 Activity Distribution", expanded=False):
+            st.markdown("*Distribution of bioactivity values across different activity types*")
 
-            with col1:
-                st.markdown("#### Efficiency Scatter Plots")
-                if st.button("📈 SEI vs BEI", key="quick_sei_bei", use_container_width=True):
-                    st.session_state.quick_plot = "sei_bei"
-                if st.button("📈 NSEI vs NBEI", key="quick_nsei_nbei", use_container_width=True):
-                    st.session_state.quick_plot = "nsei_nbei"
+            if st.button("Generate Activity Distribution Plot", key="btn_activity"):
+                import plotly.express as px
 
-            with col2:
-                st.markdown("#### Metric Distributions")
-                if st.button("📊 Efficiency Boxplots", key="quick_boxplots", use_container_width=True):
-                    st.session_state.quick_plot = "boxplots"
-                if st.button("📊 Activity Distribution", key="quick_activity", use_container_width=True):
-                    st.session_state.quick_plot = "activity"
+                # Check if required columns exist
+                if 'Activity_Type' in df_results.columns and 'pActivity' in df_results.columns:
+                    # Create activity distribution box plot
+                    activity_box_fig = px.box(
+                        df_results,
+                        x='Activity_Type',
+                        y='pActivity',
+                        color='Activity_Type',
+                        points='all',
+                        hover_data=['ChEMBL_ID', 'Molecule_Name'],
+                        title='Activity Distribution by Type',
+                        labels={'pActivity': 'pActivity (-log10[M])', 'Activity_Type': 'Activity_Type'},
+                        height=600
+                    )
 
-            # Show the selected quick plot with customization
-            if 'quick_plot' in st.session_state:
-                st.markdown("---")
+                    activity_box_fig.update_layout(
+                        template='plotly_white',
+                        xaxis_title='Activity_Type',
+                        yaxis_title='pActivity (-log10[M])'
+                    )
 
-                # Import the enhanced static plot viewer
+                    # Display the plot
+                    st.plotly_chart(activity_box_fig, use_container_width=True)
+                else:
+                    st.warning("Activity data not available for this dataset")
+
+        # Efficiency Scatter Plots Expander
+        with st.expander("📊 Efficiency Scatter Plots", expanded=False):
+            st.markdown("*Compare efficiency metrics (SEI vs BEI / NSEI vs NBEI)*")
+
+            plot_type = st.radio(
+                "Select Plot Type",
+                ["SEI vs BEI", "NSEI vs NBEI"],
+                key="scatter_plot_type",
+                horizontal=True
+            )
+
+            if st.button("Generate Scatter Plot", key="btn_scatter"):
                 from modules.visualization import show_static_plot_with_controls
-
-                if st.session_state.quick_plot == "sei_bei":
+                if plot_type == "SEI vs BEI":
                     show_static_plot_with_controls(df_results, "SEI", "BEI", compound_folder)
-                elif st.session_state.quick_plot == "nsei_nbei":
+                else:
                     show_static_plot_with_controls(df_results, "NSEI", "NBEI", compound_folder)
-                elif st.session_state.quick_plot == "boxplots":
-                    show_interactive_plots(compound_folder, "sei")
-                elif st.session_state.quick_plot == "activity":
-                    show_interactive_plots(compound_folder, "activity")
 
-        # Custom visualization builder tab
-        with plot_tabs[1]:
+        # Efficiency Boxplots Expander
+        with st.expander("📦 Efficiency Boxplots (Grouped by Compound)", expanded=False):
+            st.markdown("*Boxplots showing efficiency metric distributions grouped by compounds*")
+
+            # Cluster size slider
+            cluster_size = st.slider(
+                "Compounds per group",
+                min_value=3,
+                max_value=20,
+                value=st.session_state.cluster_size,
+                step=1,
+                key="boxplot_cluster_size",
+                help="Adjust how many compounds are shown in each boxplot group"
+            )
+            st.session_state.cluster_size = cluster_size
+
+            # Calculate number of groups
+            num_unique_compounds = df_results['ChEMBL_ID'].nunique()
+            num_groups = (num_unique_compounds + cluster_size - 1) // cluster_size  # Ceiling division
+            st.caption(f"📊 Will create **{num_groups} groups** ({num_unique_compounds} compounds ÷ {cluster_size} per group)")
+
+            # Create sub-tabs for SEI and BEI
+            box_tabs = st.tabs(["SEI Metrics", "BEI Metrics"])
+
+            with box_tabs[0]:
+                st.markdown("**Surface Efficiency Index (SEI) Boxplots**")
+                if st.button("Generate SEI Boxplots", key="btn_sei_box"):
+                    import plotly.express as px
+
+                    # Check if SEI or NSEI columns exist
+                    sei_metrics = [col for col in ['SEI', 'NSEI'] if col in df_results.columns]
+
+                    if not sei_metrics:
+                        st.warning("SEI metrics not available for this dataset")
+                    else:
+                        # Get unique compounds and create clusters
+                        unique_compounds = df_results['ChEMBL_ID'].unique().tolist()
+                        compound_clusters = [unique_compounds[i:i + cluster_size]
+                                           for i in range(0, len(unique_compounds), cluster_size)]
+
+                        # Add DisplayName column if it doesn't exist
+                        if 'DisplayName' not in df_results.columns:
+                            df_results['DisplayName'] = df_results['ChEMBL_ID']
+
+                        # Generate boxplots for each metric and cluster
+                        for metric in sei_metrics:
+                            st.markdown(f"#### {metric} Distribution")
+
+                            # Filter valid data
+                            valid_data = df_results[df_results[metric].notna()].copy()
+
+                            if valid_data.empty:
+                                st.warning(f"No valid data for {metric}")
+                                continue
+
+                            metric_title = {
+                                'SEI': 'Surface Efficiency Index',
+                                'NSEI': 'Normalized Surface Efficiency Index'
+                            }.get(metric, metric)
+
+                            # Create a box plot for each cluster
+                            for i, cluster in enumerate(compound_clusters):
+                                # Filter data for this cluster
+                                cluster_data = valid_data[valid_data['ChEMBL_ID'].isin(cluster)]
+
+                                if cluster_data.empty:
+                                    continue
+
+                                # Process each unique ChEMBL ID
+                                plot_data = []
+                                for chembl_id in cluster:
+                                    compound_data = cluster_data[cluster_data['ChEMBL_ID'] == chembl_id]
+                                    if not compound_data.empty:
+                                        display_name = compound_data['DisplayName'].iloc[0]
+
+                                        for _, row in compound_data.iterrows():
+                                            plot_data.append({
+                                                'ChEMBL_ID': chembl_id,
+                                                'DisplayName': display_name,
+                                                'Value': row[metric],
+                                                'Metric': metric,
+                                                'Molecule_Name': row['Molecule_Name'],
+                                                'Activity_Type': row.get('Activity_Type', 'Unknown'),
+                                                'Activity_nM': row.get('Activity_nM', float('nan'))
+                                            })
+
+                                if not plot_data:
+                                    continue
+
+                                # Convert to DataFrame
+                                plot_df = pd.DataFrame(plot_data)
+
+                                # Create boxplot
+                                fig = px.box(
+                                    plot_df,
+                                    x='ChEMBL_ID',
+                                    y='Value',
+                                    color='ChEMBL_ID',
+                                    points='all',
+                                    hover_data=['Molecule_Name', 'Activity_Type', 'Activity_nM'],
+                                    title=f'{metric_title} Distribution (Group {i+1} of {len(compound_clusters)})',
+                                    labels={'Value': metric, 'ChEMBL_ID': 'Compound'},
+                                    height=600
+                                )
+
+                                # Update legend to use DisplayName
+                                for trace in fig.data:
+                                    chembl_id = trace.name
+                                    display_names = plot_df[plot_df['ChEMBL_ID'] == chembl_id]['DisplayName'].unique()
+                                    if len(display_names) > 0:
+                                        trace.name = display_names[0]
+
+                                fig.update_layout(
+                                    template='plotly_white',
+                                    xaxis_tickangle=-45,
+                                    legend_title_text='Compound'
+                                )
+
+                                # Display the plot
+                                st.plotly_chart(fig, use_container_width=True)
+
+            with box_tabs[1]:
+                st.markdown("**Binding Efficiency Index (BEI) Boxplots**")
+                if st.button("Generate BEI Boxplots", key="btn_bei_box"):
+                    import plotly.express as px
+
+                    # Check if BEI or nBEI columns exist
+                    bei_metrics = [col for col in ['BEI', 'nBEI'] if col in df_results.columns]
+
+                    if not bei_metrics:
+                        st.warning("BEI metrics not available for this dataset")
+                    else:
+                        # Get unique compounds and create clusters
+                        unique_compounds = df_results['ChEMBL_ID'].unique().tolist()
+                        compound_clusters = [unique_compounds[i:i + cluster_size]
+                                           for i in range(0, len(unique_compounds), cluster_size)]
+
+                        # Add DisplayName column if it doesn't exist
+                        if 'DisplayName' not in df_results.columns:
+                            df_results['DisplayName'] = df_results['ChEMBL_ID']
+
+                        # Generate boxplots for each metric and cluster
+                        for metric in bei_metrics:
+                            st.markdown(f"#### {metric} Distribution")
+
+                            # Filter valid data
+                            valid_data = df_results[df_results[metric].notna()].copy()
+
+                            if valid_data.empty:
+                                st.warning(f"No valid data for {metric}")
+                                continue
+
+                            metric_title = {
+                                'BEI': 'Binding Efficiency Index',
+                                'nBEI': 'Normalized Binding Efficiency Index'
+                            }.get(metric, metric)
+
+                            # Create a box plot for each cluster
+                            for i, cluster in enumerate(compound_clusters):
+                                # Filter data for this cluster
+                                cluster_data = valid_data[valid_data['ChEMBL_ID'].isin(cluster)]
+
+                                if cluster_data.empty:
+                                    continue
+
+                                # Process each unique ChEMBL ID
+                                plot_data = []
+                                for chembl_id in cluster:
+                                    compound_data = cluster_data[cluster_data['ChEMBL_ID'] == chembl_id]
+                                    if not compound_data.empty:
+                                        display_name = compound_data['DisplayName'].iloc[0]
+
+                                        for _, row in compound_data.iterrows():
+                                            plot_data.append({
+                                                'ChEMBL_ID': chembl_id,
+                                                'DisplayName': display_name,
+                                                'Value': row[metric],
+                                                'Metric': metric,
+                                                'Molecule_Name': row['Molecule_Name'],
+                                                'Activity_Type': row.get('Activity_Type', 'Unknown'),
+                                                'Activity_nM': row.get('Activity_nM', float('nan'))
+                                            })
+
+                                if not plot_data:
+                                    continue
+
+                                # Convert to DataFrame
+                                plot_df = pd.DataFrame(plot_data)
+
+                                # Create boxplot
+                                fig = px.box(
+                                    plot_df,
+                                    x='ChEMBL_ID',
+                                    y='Value',
+                                    color='ChEMBL_ID',
+                                    points='all',
+                                    hover_data=['Molecule_Name', 'Activity_Type', 'Activity_nM'],
+                                    title=f'{metric_title} Distribution (Group {i+1} of {len(compound_clusters)})',
+                                    labels={'Value': metric, 'ChEMBL_ID': 'Compound'},
+                                    height=600
+                                )
+
+                                # Update legend to use DisplayName
+                                for trace in fig.data:
+                                    chembl_id = trace.name
+                                    display_names = plot_df[plot_df['ChEMBL_ID'] == chembl_id]['DisplayName'].unique()
+                                    if len(display_names) > 0:
+                                        trace.name = display_names[0]
+
+                                fig.update_layout(
+                                    template='plotly_white',
+                                    xaxis_tickangle=-45,
+                                    legend_title_text='Compound'
+                                )
+
+                                # Display the plot
+                                st.plotly_chart(fig, use_container_width=True)
+
+        # Molecular Properties Expander
+        with st.expander("🧪 Molecular Properties (PSA/MW vs QED)", expanded=False):
+            st.markdown("*Relationship between molecular properties and drug-likeness*")
+
+            if st.button("Generate Property Plot", key="btn_properties"):
+                import plotly.express as px
+
+                # Check if required columns exist
+                if all(col in df_results.columns for col in ['TPSA', 'Molecular_Weight', 'QED']):
+                    # Create PSAoMW column
+                    df_plot = df_results.copy()
+                    df_plot['PSAoMW'] = df_plot['TPSA'] / df_plot['Molecular_Weight']
+
+                    # Create the scatter plot
+                    psaomw_qed_fig = px.scatter(
+                        df_plot.dropna(subset=['PSAoMW', 'QED']),
+                        x='QED',
+                        y='PSAoMW',
+                        color='Activity_Type',
+                        hover_name='ChEMBL_ID',
+                        hover_data=['Molecule_Name', 'Activity_nM', 'TPSA', 'Molecular_Weight'],
+                        title='PSA/MW vs Drug-likeness (QED)',
+                        labels={'PSAoMW': 'PSA/MW Ratio', 'QED': 'QED (Drug-likeness)'},
+                        height=600
+                    )
+
+                    psaomw_qed_fig.update_layout(
+                        template='plotly_white'
+                    )
+
+                    # Display the plot
+                    st.plotly_chart(psaomw_qed_fig, use_container_width=True)
+                else:
+                    st.warning("Required molecular property data (TPSA, Molecular_Weight, QED) not available for this dataset")
+
+        # Custom Visualization Builder Expander
+        with st.expander("🎨 Custom Visualization Builder", expanded=False):
+            st.markdown("*Build custom plots with your choice of metrics and styling*")
             from modules.custom_viz_builder import custom_visualization_builder
             custom_visualization_builder(df_results, selected_compound)
-
-        with plot_tabs[2]:
-            show_interactive_plots(compound_folder, "activity")
-
-        with plot_tabs[3]:
-            show_interactive_plots(compound_folder, "sei")
-
-        with plot_tabs[4]:
-            show_interactive_plots(compound_folder, "bei")
     
     # Molecule viewer tab
     with tabs[2]:
         # Only show sidebar when in Molecules tab
         from modules.molecule_viewer import molecule_viewer_app, get_molecule_style_controls
-        
+
         st.subheader("🧪 Molecule Viewer")
         style_settings = get_molecule_style_controls(show_sidebar=True)
 
-        
-        # Call the viewer with the style settings
-        molecule_viewer_app(compound_folder, style_settings)
+
+        # Call the viewer with the style settings and df_results for on-demand generation
+        molecule_viewer_app(compound_folder, style_settings, df_results)
     
     # Data table tab with 4 sub-tabs
     with tabs[3]:
@@ -532,11 +796,23 @@ def display_compound_details_view():
             st.markdown("**Complete bioactivity data with all columns**")
             st.caption("⚠️ **Note**: This view shows bioactivity-level data. PDB details are not duplicated here - see 'PDB Evidence' tab for compound-level structural data.")
 
-            st.caption(f"📊 Showing {len(df_results)} rows × {len(df_results.columns)} columns")
-            st.dataframe(df_results, use_container_width=True, height=500)
+            # Filter out interpretive flag columns (Is_* columns) for display
+            # These are kept in CSV files for internal processing but not shown to users
+            display_df = df_results.copy()
+            cols_to_remove = [col for col in display_df.columns if col.startswith('Is_')]
 
-            # Download button
-            csv_complete = df_results.to_csv(index=False)
+            # Also remove other interpretive columns we decided to hide
+            cols_to_remove.extend(['Outlier_Count', 'NP_isglycoside'])
+
+            # Remove columns that exist in the dataframe
+            cols_to_remove = [col for col in cols_to_remove if col in display_df.columns]
+            display_df = display_df.drop(columns=cols_to_remove)
+
+            st.caption(f"📊 Showing {len(display_df)} rows × {len(display_df.columns)} columns")
+            st.dataframe(display_df, use_container_width=True, height=500)
+
+            # Download button - provide filtered version without interpretive flags
+            csv_complete = display_df.to_csv(index=False)
             st.download_button(
                 "📥 Download Complete CSV",
                 csv_complete,
@@ -550,8 +826,8 @@ def display_compound_details_view():
         col1, col2 = st.columns(2)
 
         with col1:
-            # All-in-one CSV download (complete table)
-            csv_file = df_results.to_csv(index=False)
+            # All-in-one CSV download (complete table) - use filtered version without interpretive flags
+            csv_file = display_df.to_csv(index=False)
             st.download_button(
                 "📥 Download Complete Results CSV",
                 csv_file,
@@ -622,17 +898,8 @@ def display_compound_details_view():
                 st.write(f"- Contains {len(files)} files ({len(json_files)} JSON files)")
                 if json_files:
                     st.write(f"- JSON files: {json_files}")
-        
-        # Add regenerate plots button
-        if st.button("🔄 Regenerate Plots"):
-            with st.spinner("Regenerating plots..."):
-                try:
-                    # Import here to avoid circular imports
-                    from modules.visualization import plot_all_visualizations
-                    plot_all_visualizations(df_results, compound_folder)
-                    st.success("✅ Plots regenerated successfully. Refresh the page to view them.")
-                except Exception as e:
-                    st.error(f"❌ Error regenerating plots: {str(e)}")
+
+        # Plots are now generated on-demand in the Interactive Plots tab
 
 def display_analyze_view():
     """Display the analyze new compound view."""
@@ -655,7 +922,7 @@ def display_analyze_view():
     col1, col2 = st.columns(2)
     
     with col1:
-        similarity_threshold = st.slider("Similarity Threshold", 0, 100, 80)
+        similarity_threshold = st.slider("Similarity Threshold", 0, 100, 90)
         st.session_state.last_similarity_threshold = similarity_threshold
     
     with col2:
@@ -737,25 +1004,34 @@ def display_analyze_view():
             if not compound_name.strip():
                 st.error("Please enter a compound name.")
                 return
-                
+
             if not structure_input.strip():
                 st.error(f"Please enter a {input_type} string.")
                 return
-            
+
+            # Sanitize compound name for filesystem safety
+            from modules.utils import sanitize_compound_name
+            original_name = compound_name.strip()
+            sanitized_name = sanitize_compound_name(original_name)
+
+            # Inform user if name was sanitized
+            if original_name != sanitized_name:
+                st.info(f"ℹ️ Compound name sanitized: '{original_name}' → '{sanitized_name}'")
+
             with st.spinner("Processing compound..."):
                 process_result = process_and_store(
-                    compound_name=compound_name,
+                    compound_name=sanitized_name,
                     structure_input=structure_input,
                     input_format=input_format,
                     similarity_threshold=similarity_threshold,
                     activity_types=selected_activities
                 )
-                
+
                 if process_result:
-                    st.success(f"Successfully processed {compound_name}")
+                    st.success(f"Successfully processed {sanitized_name}")
                     # Offer to navigate to the compound details view
                     if st.button("View Results", key="view_new_results"):
-                        st.session_state.selected_compound = compound_name
+                        st.session_state.selected_compound = sanitized_name
                         st.session_state.current_view = "compound_details"
                         st.rerun()
     
@@ -772,7 +1048,27 @@ def display_analyze_view():
             if valid and df is not None:
                 st.write("Preview of uploaded data:")
                 st.dataframe(df.head())
-                
+
+                # Check for compound names that will be sanitized
+                from modules.utils import sanitize_compound_name
+                name_changes = []
+                for idx, row in df.iterrows():
+                    original_name = str(row['compound_name']).strip()
+                    sanitized_name = sanitize_compound_name(original_name)
+                    if original_name != sanitized_name:
+                        name_changes.append({
+                            'Row': idx + 1,
+                            'Original Name': original_name,
+                            'Sanitized Name': sanitized_name
+                        })
+
+                # Show warning if there are name changes
+                if name_changes:
+                    st.warning(f"⚠️ **{len(name_changes)} compound name(s) contain invalid characters and will be sanitized:**")
+                    changes_df = pd.DataFrame(name_changes)
+                    st.dataframe(changes_df, use_container_width=True)
+                    st.info("📝 These names will be automatically cleaned to ensure compatibility with file systems.")
+
                 if st.button("Process CSV", key="process_csv_batch", type="primary"):
                     if not selected_activities:
                         st.error("Please select at least one activity type to process.")
@@ -807,23 +1103,30 @@ def main():
                 st.info(f"⏳ Processing {st.session_state.processing_compound} in background...")
                 st.progress(st.session_state.processing_progress)
         
-        # Alert for newly processed compound
+        # Alert for newly processed compound (only show if compound still exists)
         if st.session_state.show_new_compound_alert:
-            alert_container = st.container()
-            with alert_container:
-                new_compound = st.session_state.last_processed_compound
-                st.success(f"✅ New compound processed: {new_compound}")
-                col1, col2 = st.columns([1, 1])
-                with col1:
-                    if st.button("View Results Now"):
-                        st.session_state.selected_compound = new_compound
-                        st.session_state.current_view = "compound_details"
-                        st.session_state.show_new_compound_alert = False
-                        st.rerun()
-                with col2:
-                    if st.button("Dismiss"):
-                        st.session_state.show_new_compound_alert = False
-                        st.rerun()
+            new_compound = st.session_state.get('last_processed_compound')
+            available_compounds = get_available_compounds()
+
+            # Only show alert if the compound still exists
+            if new_compound and new_compound in available_compounds:
+                alert_container = st.container()
+                with alert_container:
+                    st.success(f"✅ New compound processed: {new_compound}")
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        if st.button("View Results Now"):
+                            st.session_state.selected_compound = new_compound
+                            st.session_state.current_view = "compound_details"
+                            st.session_state.show_new_compound_alert = False
+                            st.rerun()
+                    with col2:
+                        if st.button("Dismiss"):
+                            st.session_state.show_new_compound_alert = False
+                            st.rerun()
+            else:
+                # Compound was deleted or doesn't exist, clear the alert
+                st.session_state.show_new_compound_alert = False
         
         # View routing based on current view state
         if st.session_state.current_view == "home":

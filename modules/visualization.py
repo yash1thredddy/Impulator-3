@@ -153,20 +153,8 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
             template='plotly_white',
             showlegend=False  # Remove legend
         )
-        
-        # Save as HTML and JSON for interactive viewing
-        try:
-            html_path = os.path.join(folder_name, 'sei_vs_bei_scatter_plot.html')
-            sei_bei_fig.write_html(html_path)
-            logger.info(f"Saved HTML to {html_path}")
-            
-            json_path = os.path.join(folder_name, 'sei_vs_bei_scatter_plot.json')
-            sei_bei_fig_json = sei_bei_fig.to_json()
-            with open(json_path, 'w') as f:
-                f.write(sei_bei_fig_json)
-            logger.info(f"Saved JSON to {json_path}")
-        except Exception as e:
-            logger.error(f"Error saving SEI vs BEI plot files: {str(e)}")
+
+        # Plot rendered on-demand in UI, not saved to disk
         
         # Check for NSEI and NBEI columns
         nsei_nbei_cols = ['NSEI', 'NBEI']
@@ -218,19 +206,7 @@ def plot_efficiency_scatter_plots(df_results: pd.DataFrame, folder_name: str) ->
             showlegend=False  # Remove legend
         )
 
-        # Save as HTML and JSON
-        try:
-            html_path = os.path.join(folder_name, 'nsei_vs_nbei_scatter_plot.html')
-            nsei_nbei_fig.write_html(html_path)
-            logger.info(f"Saved HTML to {html_path}")
-
-            json_path = os.path.join(folder_name, 'nsei_vs_nbei_scatter_plot.json')
-            nsei_nbei_fig_json = nsei_nbei_fig.to_json()
-            with open(json_path, 'w') as f:
-                f.write(nsei_nbei_fig_json)
-            logger.info(f"Saved JSON to {json_path}")
-        except Exception as e:
-            logger.error(f"Error saving NSEI vs NBEI plot files: {str(e)}")
+        # Plot rendered on-demand in UI, not saved to disk
             
     except Exception as e:
         logger.error(f"Error generating efficiency scatter plots: {str(e)}", exc_info=True)
@@ -268,11 +244,8 @@ def plot_activity_visualizations(df_results: pd.DataFrame, activity_folder: str)
             xaxis_title='Activity_Type',
             yaxis_title='pActivity (-log10[M])'
         )
-        
-        activity_box_fig.write_html(os.path.join(activity_folder, 'activity_distribution.html'))
-        activity_box_fig_json = activity_box_fig.to_json()
-        with open(os.path.join(activity_folder, 'activity_distribution.json'), 'w') as f:
-            f.write(activity_box_fig_json)
+
+        # Plot rendered on-demand in UI, not saved to disk
         
         # 2. Add PSAoMW vs QED plot (new plot)
         if all(col in df_results.columns for col in ['TPSA', 'Molecular_Weight', 'QED']):
@@ -296,11 +269,8 @@ def plot_activity_visualizations(df_results: pd.DataFrame, activity_folder: str)
             psaomw_qed_fig.update_layout(
                 template='plotly_white'
             )
-            
-            psaomw_qed_fig.write_html(os.path.join(activity_folder, 'PSAoMW_vs_QED.html'))
-            psaomw_qed_fig_json = psaomw_qed_fig.to_json()
-            with open(os.path.join(activity_folder, 'PSAoMW_vs_QED.json'), 'w') as f:
-                f.write(psaomw_qed_fig_json)
+
+            # Plot rendered on-demand in UI, not saved to disk
     
     except Exception as e:
         logger.error(f"Error generating activity visualizations: {str(e)}")
@@ -442,15 +412,7 @@ def plot_property_visualizations(df_results: pd.DataFrame, sei_folder: str, bei_
                             font=dict(size=12)
                         )
                     
-                    # Save files
-                    metric_lower = metric.lower()
-                    html_path = os.path.join(folder, f'{metric_lower}_boxplot_group{i+1}.html')
-                    fig.write_html(html_path)
-                    
-                    json_path = os.path.join(folder, f'{metric_lower}_boxplot_group{i+1}.json')
-                    fig_json = fig.to_json()
-                    with open(json_path, 'w') as f:
-                        f.write(fig_json)
+                    # Plot rendered on-demand in UI, not saved to disk
         
         # Create SEI/NSEI boxplots
         if any(col in df_results.columns for col in ['SEI', 'NSEI']):

@@ -17,7 +17,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from config import RESULTS_DIR, ACTIVITY_TYPES
 from modules.data_processor import process_compound, load_results
-from modules.utils import validate_compound_name, validate_smiles, validate_inchi, inchi_to_smiles
+from modules.utils import validate_compound_name, validate_smiles, validate_inchi, inchi_to_smiles, sanitize_compound_name
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -113,7 +113,7 @@ def process_and_store(
     structure_input: str = None,
     input_format: str = "smiles",
     smiles: str = None,  # Keep for backward compatibility
-    similarity_threshold: int = 80,
+    similarity_threshold: int = 90,
     activity_types: List[str] = ACTIVITY_TYPES
 ) -> bool:
     """
@@ -209,7 +209,7 @@ def process_and_store(
 
 def process_csv_batch(
     df: pd.DataFrame,
-    similarity_threshold: int = 80,
+    similarity_threshold: int = 90,
     activity_types: List[str] = ACTIVITY_TYPES
 ) -> Tuple[int, int]:
     """
@@ -236,12 +236,18 @@ def process_csv_batch(
     
     for idx, row in df.iterrows():
         try:
-            compound_name = str(row['compound_name']).strip()
-            
+            # Get original compound name and sanitize it for filesystem
+            original_name = str(row['compound_name']).strip()
+            compound_name = sanitize_compound_name(original_name)
+
+            # Log if name was changed
+            if original_name != compound_name:
+                logger.info(f"Sanitized compound name: '{original_name}' -> '{compound_name}'")
+
             # Determine structure input and format
             structure_input = None
             input_format = None
-            
+
             if 'smiles' in df.columns and pd.notna(row['smiles']):
                 structure_input = str(row['smiles']).strip()
                 input_format = "smiles"
@@ -252,10 +258,10 @@ def process_csv_batch(
                 logger.error(f"No valid structure data found for compound {compound_name} at row {idx+1}")
                 fail_count += 1
                 continue
-            
+
             progress_text.text(f"Processing compound {idx+1}/{len(df)}: {compound_name} ({input_format.upper()})")
-            
-            # Process the compound
+
+            # Process the compound with sanitized name
             result = process_and_store(
                 compound_name=compound_name,
                 structure_input=structure_input,
@@ -300,16 +306,16 @@ def display_compound_summary(
             if os.path.exists(metadata_file):
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
-                    similarity_threshold = metadata.get('similarity_threshold', 80)
+                    similarity_threshold = metadata.get('similarity_threshold', 90)
                     processing_date = metadata.get('processing_date', 'Unknown')
                     activity_types_used = metadata.get('activity_types', '').split(',')
             else:
-                similarity_threshold = st.session_state.get('last_similarity_threshold', 80)
+                similarity_threshold = st.session_state.get('last_similarity_threshold', 90)
                 processing_date = 'Unknown'
                 activity_types_used = []
         except Exception as e:
             logger.error(f"Error loading metadata: {str(e)}")
-            similarity_threshold = st.session_state.get('last_similarity_threshold', 80)
+            similarity_threshold = st.session_state.get('last_similarity_threshold', 90)
             processing_date = 'Unknown'
             activity_types_used = []
     else:
@@ -452,20 +458,8 @@ def display_compound_summary(
                     margin=dict(l=0, r=0, t=30, b=0)
                 )
                 
-                # Display the chart
+                # Display the chart (rendered on-demand, not saved to disk)
                 st.plotly_chart(fig, use_container_width=True)
-                
-                # Save the pie chart to the Activity folder
-                try:
-                    activity_folder = os.path.join(RESULTS_DIR, compound_name, "Activity")
-                    os.makedirs(activity_folder, exist_ok=True)
-                    
-                    pie_json_path = os.path.join(activity_folder, "activity_distribution_pie.json")
-                    fig_json = fig.to_json()
-                    with open(pie_json_path, 'w') as f:
-                        f.write(fig_json)
-                except Exception as e:
-                    logger.error(f"Error saving activity pie chart: {str(e)}")
             
             # Statistical summary for activities
             st.markdown("##### Activity Statistics by Type (nM)")
@@ -585,20 +579,8 @@ def display_compound_summary(
                     boxpoints='outliers'  # Ensure only outliers are shown
                 )
                 
-                # Display the boxplot
+                # Display the boxplot (rendered on-demand, not saved to disk)
                 st.plotly_chart(box_fig, use_container_width=True)
-                
-                # Save the boxplot
-                try:
-                    sei_folder = os.path.join(RESULTS_DIR, compound_name, "SEI")
-                    os.makedirs(sei_folder, exist_ok=True)
-                    
-                    box_json_path = os.path.join(sei_folder, "efficiency_metrics_boxplot.json")
-                    box_fig_json = box_fig.to_json()
-                    with open(box_json_path, 'w') as f:
-                        f.write(box_fig_json)
-                except Exception as e:
-                    logger.error(f"Error saving efficiency metrics boxplot: {str(e)}")
                         
             if 'Target_ChEMBL_ID' in df_results.columns:
                 st.markdown("##### Efficiency Metrics by Target")
@@ -956,7 +938,7 @@ def display_compound_summary(
     
     # Physicochemical properties
     with st.expander("⚗️ Physicochemical Properties", expanded=True):
-        phys_props = ['Molecular Weight', 'TPSA', 'HBD', 'HBA', 'NPOL', 'QED', 'Heavy Atoms']
+        phys_props = ['Molecular_Weight', 'TPSA', 'QED', 'HBD', 'HBA', 'Heavy_Atoms', 'NPOL']
         avail_props = [prop for prop in phys_props if prop in df_results.columns]
         
         if avail_props:
@@ -984,24 +966,3 @@ def display_compound_summary(
                         props_df[col] = props_df[col].round(2)
                 
                 st.dataframe(props_df, use_container_width=True)
-                
-            # Create correlation heatmap between properties and efficiency metrics
-            correlation_cols = avail_props + [metric for metric in ['SEI', 'BEI', 'NSEI', 'nBEI', 'pActivity'] 
-                                           if metric in df_results.columns]
-            
-            if len(correlation_cols) > 1:
-                st.markdown("##### Correlation Between Properties and Efficiency Metrics")
-                
-                # Calculate correlation matrix
-                corr_df = df_results[correlation_cols].corr().round(2)
-                
-                # Plot heatmap
-                fig, ax = plt.subplots(figsize=(12, 10))
-                mask = np.triu(np.ones_like(corr_df, dtype=bool))
-                cmap = sns.diverging_palette(220, 10, as_cmap=True)
-                
-                sns.heatmap(corr_df, mask=mask, cmap=cmap, vmax=1, vmin=-1, center=0,
-                           square=True, linewidths=.5, cbar_kws={"shrink": .5}, annot=True)
-                
-                plt.title('Correlation Heatmap')
-                st.pyplot(fig)

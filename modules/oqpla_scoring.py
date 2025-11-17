@@ -72,8 +72,13 @@ def calculate_efficiency_outlier_score(
     normalized_scores = []
 
     for metric in metrics:
-        # Calculate Z-score
-        z_score = (df[metric] - df[metric].mean()) / df[metric].std()
+        # Calculate Z-score (guard against zero variance)
+        std_val = df[metric].std()
+        if std_val == 0 or pd.isna(std_val):
+            # Constant metric - all values are the same, z-score is 0
+            z_score = pd.Series(0.0, index=df.index)
+        else:
+            z_score = (df[metric] - df[metric].mean()) / std_val
 
         # Normalize to [0, 1]: Z/3 and clip
         normalized = (z_score / 3.0).clip(0, 1)

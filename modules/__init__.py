@@ -39,6 +39,7 @@ def calculate_efficiency_metrics(pActivity, psa, molecular_weight, npol, heavy_a
 from modules.utils import (
     validate_smiles,
     validate_compound_name,
+    sanitize_compound_name,
     validate_csv_file,
     get_available_compounds,
     zip_results,

@@ -109,7 +109,7 @@ def get_target_name(target_chembl_id: str) -> Optional[str]:
         logger.error(f"Error fetching target name for {target_chembl_id}: {str(e)}")
         return None
 
-def get_chembl_ids(smiles: str, similarity_threshold: int = 80) -> List[Dict[str, str]]:
+def get_chembl_ids(smiles: str, similarity_threshold: int = 90) -> List[Dict[str, str]]:
     """
     Perform similarity search with error handling.
     

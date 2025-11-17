@@ -26,8 +26,9 @@ def get_numeric_columns(df: pd.DataFrame) -> List[str]:
 def get_categorical_columns(df: pd.DataFrame) -> List[str]:
     """Get list of categorical columns suitable for color/grouping."""
     categorical_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
-    # Add some numeric columns that should be treated as categorical
-    categorical_cols.extend(['Outlier_Count'])
+    # Add some numeric columns that should be treated as categorical (only if they exist)
+    potential_categorical = ['Outlier_Count']
+    categorical_cols.extend([col for col in potential_categorical if col in df.columns])
     return categorical_cols
 
 

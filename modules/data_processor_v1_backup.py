@@ -203,8 +203,9 @@ def process_single_compound(
                         pActivity, psa, molecular_weight, npol, heavy_atoms
                     )
 
-                    # Calculate QED
-                    qed = QED.qed(Chem.MolFromSmiles(smiles)) if smiles != 'N/A' else np.nan
+                    # Calculate QED (guard against invalid molecules)
+                    mol_for_qed = Chem.MolFromSmiles(smiles) if smiles != 'N/A' else None
+                    qed = QED.qed(mol_for_qed) if mol_for_qed is not None else np.nan
 
                     results.append({
                         'ChEMBL ID': chembl_id,
@@ -244,7 +245,8 @@ def process_single_compound(
 
         # If no activity data, add basic compound info
         if not results:
-            qed = QED.qed(Chem.MolFromSmiles(smiles)) if smiles != 'N/A' else np.nan
+            mol_for_qed = Chem.MolFromSmiles(smiles) if smiles != 'N/A' else None
+            qed = QED.qed(mol_for_qed) if mol_for_qed is not None else np.nan
             results.append({
                 'ChEMBL ID': chembl_id,
                 'Molecule Name': molecule_name,

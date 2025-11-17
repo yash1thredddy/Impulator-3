@@ -416,7 +416,7 @@ def calculate_advanced_metrics(df: pd.DataFrame) -> pd.DataFrame:
 def process_compound(
     compound_name: str,
     smiles: str,
-    similarity_threshold: int = 80,
+    similarity_threshold: int = 90,
     activity_types: List[str] = ACTIVITY_TYPES
 ) -> Optional[pd.DataFrame]:
     """
@@ -588,17 +588,7 @@ def process_compound(
             json.dump(metadata, f, indent=4)
         logger.info(f"Saved metadata to {metadata_filename}")
 
-        # STEP 6.5: Generate all visualizations
-        try:
-            from modules.visualization import plot_all_visualizations
-            logger.info("Generating visualizations...")
-            st.info("📊 Generating plots and visualizations...")
-            plot_all_visualizations(df_results, compound_folder)
-            logger.info("Visualizations generated successfully")
-        except Exception as e:
-            logger.error(f"Error generating visualizations: {str(e)}")
-            st.warning(f"⚠️ Warning: Some visualizations could not be generated: {str(e)}")
-            # Continue processing even if visualization fails
+        # Visualizations are now generated on-demand in the UI, not saved to disk during processing
 
         # STEP 7: Generate IMP report
         report = generate_imp_report(df_results, compound_name)

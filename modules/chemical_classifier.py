@@ -265,7 +265,8 @@ def classify_compound_type(classification: Dict) -> str:
 
     # Check all ClassyFire levels
     for field in ['Superclass', 'Class', 'Subclass', 'Direct_Parent']:
-        value = classification.get(field, '').lower()
+        value = classification.get(field) or ''  # Guard against None
+        value = value.lower()
         if any(keyword in value for keyword in np_keywords):
             return "Natural Product"
 

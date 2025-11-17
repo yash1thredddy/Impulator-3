@@ -330,9 +330,14 @@ def calculate_z_scores(df: pd.DataFrame, metrics: List[str] = None) -> pd.DataFr
             logger.warning(f"Metric {metric} not found. Skipping.")
             continue
 
-        # Calculate Z-score
+        # Calculate Z-score (guard against zero variance)
         z_col = f'{metric}_Zscore'
-        df[z_col] = (df[metric] - df[metric].mean()) / df[metric].std()
+        std_val = df[metric].std()
+        if std_val == 0 or pd.isna(std_val):
+            # Constant metric - all values are the same, z-score is 0
+            df[z_col] = 0.0
+        else:
+            df[z_col] = (df[metric] - df[metric].mean()) / std_val
 
     return df
 
