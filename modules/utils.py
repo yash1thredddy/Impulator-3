@@ -365,16 +365,21 @@ def zip_results() -> Optional[str]:
             st.warning("No results available to download.")
             return None
         
+        # Local import to avoid circular dependency at module load time
+        from modules.data_processor import get_compound_folder
+
         with st.spinner("Creating ZIP file..."):
             progress_bar = st.progress(0)
             with zipfile.ZipFile(zip_filename, 'w', zipfile.ZIP_DEFLATED) as zipf:
                 for idx, compound in enumerate(compounds):
-                    compound_folder = os.path.join(RESULTS_DIR, compound)
+                    compound_folder = get_compound_folder(compound)
+                    if compound_folder is None or not os.path.exists(compound_folder):
+                        continue
                     for root, _, files in os.walk(compound_folder):
                         for file in files:
                             file_path = os.path.join(root, file)
-                            zipf.write(file_path, 
-                                     os.path.relpath(file_path, RESULTS_DIR))
+                            zipf.write(file_path,
+                                       os.path.relpath(file_path, RESULTS_DIR))
                     progress_bar.progress((idx + 1) / len(compounds))
             
             return zip_filename if os.path.exists(zip_filename) else None
@@ -396,7 +401,10 @@ def zip_compound_results(compound_name: str) -> Optional[str]:
     """
     try:
         zip_filename = f"{compound_name}_results.zip"
-        compound_folder = os.path.join(RESULTS_DIR, compound_name)
+
+        # Local import to avoid circular dependency at module load time
+        from modules.data_processor import get_compound_folder
+        compound_folder = get_compound_folder(compound_name)
         
         if not os.path.exists(compound_folder):
             st.warning(f"No results available for {compound_name}.")
