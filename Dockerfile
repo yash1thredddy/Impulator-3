@@ -25,6 +25,9 @@ COPY . .
 # Create the necessary directories
 RUN mkdir -p /app/analysis_results
 
+# Patch rcsbapi to use HTTPS instead of HTTP for schema URLs
+RUN python3 patch_rcsbapi.py
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
