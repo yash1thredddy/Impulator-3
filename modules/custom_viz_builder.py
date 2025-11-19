@@ -202,7 +202,7 @@ def create_custom_scatter(df: pd.DataFrame, numeric_cols: List[str],
     )
 
     fig.update_layout(template='plotly_white')
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig)
 
     # Download option
     if st.button("💾 Save this plot", key="save_scatter"):
@@ -247,7 +247,7 @@ def create_custom_3d_scatter(df: pd.DataFrame, numeric_cols: List[str],
     )
 
     fig.update_layout(template='plotly_white')
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig)
 
 
 def create_custom_boxplot(df: pd.DataFrame, numeric_cols: List[str],
@@ -275,7 +275,7 @@ def create_custom_boxplot(df: pd.DataFrame, numeric_cols: List[str],
         fig = px.box(plot_df, x=x_col, y=y_col, points=points_type, title=f'{y_col} by {x_col}')
 
     fig.update_layout(template='plotly_white', height=600)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig)
 
 
 def create_custom_violin(df: pd.DataFrame, numeric_cols: List[str],
@@ -298,7 +298,7 @@ def create_custom_violin(df: pd.DataFrame, numeric_cols: List[str],
                    title=f'{y_col} distribution by {x_col}')
 
     fig.update_layout(template='plotly_white', height=600)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig)
 
 
 def create_custom_histogram(df: pd.DataFrame, numeric_cols: List[str],
@@ -329,4 +329,4 @@ def create_custom_histogram(df: pd.DataFrame, numeric_cols: List[str],
     )
 
     fig.update_layout(template='plotly_white', height=600)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig)

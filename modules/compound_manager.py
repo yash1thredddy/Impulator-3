@@ -441,7 +441,7 @@ def display_compound_summary(
                 # Add section headers if we have both ClassyFire and NPClassifier
                 st.markdown("##### Complete Chemical Classification")
                 st.markdown("*Showing ClassyFire and NPClassifier taxonomy for all similar compounds*")
-                st.dataframe(class_summary, use_container_width=True)
+                st.dataframe(class_summary)
 
                 # Show summary statistics
                 col1, col2 = st.columns(2)
@@ -482,7 +482,7 @@ def display_compound_summary(
             
             with col1:
                 st.markdown("##### Activity Distribution")
-                st.dataframe(activity_counts, use_container_width=True)
+                st.dataframe(activity_counts)
             
             with col2:
                 # Create a Plotly pie chart
@@ -507,7 +507,7 @@ def display_compound_summary(
                 )
                 
                 # Display the chart (rendered on-demand, not saved to disk)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig)
             
             # Statistical summary for activities
             st.markdown("##### Activity Statistics by Type (nM)")
@@ -537,7 +537,7 @@ def display_compound_summary(
                     if col in stats_df.columns:
                         stats_df[col] = stats_df[col].round(2)
                 
-                st.dataframe(stats_df, use_container_width=True)
+                st.dataframe(stats_df)
     
     # Efficiency metrics summary
     with st.expander("🎯 Efficiency Metrics", expanded=True):
@@ -568,7 +568,7 @@ def display_compound_summary(
                     if col in stats_df.columns:
                         stats_df[col] = stats_df[col].round(3)
                 
-                st.dataframe(stats_df, use_container_width=True)
+                st.dataframe(stats_df)
             
             # Create boxplots for efficiency metrics using Plotly
             st.markdown("##### Efficiency Metrics Distribution")
@@ -628,7 +628,7 @@ def display_compound_summary(
                 )
                 
                 # Display the boxplot (rendered on-demand, not saved to disk)
-                st.plotly_chart(box_fig, use_container_width=True)
+                st.plotly_chart(box_fig)
                         
             if 'Target_ChEMBL_ID' in df_results.columns:
                 st.markdown("##### Efficiency Metrics by Target")
@@ -667,7 +667,7 @@ def display_compound_summary(
                     target_df = pd.DataFrame(target_metrics)
                     
                     # Display the table with one row per target
-                    st.dataframe(target_df, use_container_width=True)
+                    st.dataframe(target_df)
                     
                     # Add explanation
                     st.info("""
@@ -747,7 +747,7 @@ def display_compound_summary(
                         avail_display_cols = [col for col in display_cols if col in multi_outliers.columns]
 
                         top_outliers = multi_outliers.nlargest(10, 'Outlier_Count')[avail_display_cols]
-                        st.dataframe(top_outliers, use_container_width=True)
+                        st.dataframe(top_outliers)
                 else:
                     st.info("No compounds are outliers in 2 or more metrics.")
 
@@ -789,7 +789,7 @@ def display_compound_summary(
                     'Count': class_counts.values,
                     'Percentage': (class_counts.values / len(df_results) * 100).round(1)
                 })
-                st.dataframe(class_df, use_container_width=True)
+                st.dataframe(class_df)
 
         # PDB Structural Evidence (Component 4) - Load from separate PDB summary file
         if 'PDB_Score' in df_results.columns:
@@ -848,7 +848,7 @@ def display_compound_summary(
                         ]
                     }
                     quality_df = pd.DataFrame(quality_data)
-                    st.dataframe(quality_df, use_container_width=True, hide_index=True)
+                    st.dataframe(quality_df, hide_index=True)
 
                     # Top compounds with PDB evidence
                     top_pdb = pdb_summary_df[pdb_summary_df['PDB_Num_Structures'] > 0].head(10)
@@ -860,7 +860,7 @@ def display_compound_summary(
                                        'PDB_Best_Resolution', 'PDB_IDs']
 
                         avail_cols = [col for col in display_cols if col in top_pdb.columns]
-                        st.dataframe(top_pdb[avail_cols], use_container_width=True, hide_index=True)
+                        st.dataframe(top_pdb[avail_cols], hide_index=True)
 
                         st.info("💡 **Tip**: Higher PDB scores indicate more experimental validation. "
                                "Compounds with ⭐⭐⭐ structures (< 2.0 Å resolution) have the strongest structural evidence. "
@@ -942,7 +942,7 @@ def display_compound_summary(
                 avail_imp_cols = [col for col in display_imp_cols if col in imp_candidates.columns]
 
                 top_imps = imp_candidates.nlargest(10, 'OQPLA_Final_Score')[avail_imp_cols]
-                st.dataframe(top_imps, use_container_width=True)
+                st.dataframe(top_imps)
             else:
                 st.success("✅ No IMP candidates detected - all compounds show specific activity profiles!")
 
@@ -988,7 +988,7 @@ def display_compound_summary(
                     cols = ['Target_ChEMBL_ID', 'Target_Name', 'Count', 'Percentage']
                     target_counts = target_counts[cols]
 
-                st.dataframe(target_counts, use_container_width=True)
+                st.dataframe(target_counts)
     
     # Physicochemical properties
     with st.expander("⚗️ Physicochemical Properties", expanded=True):
@@ -1019,4 +1019,4 @@ def display_compound_summary(
                     if col in props_df.columns:
                         props_df[col] = props_df[col].round(2)
                 
-                st.dataframe(props_df, use_container_width=True)
+                st.dataframe(props_df)

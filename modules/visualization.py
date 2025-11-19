@@ -541,7 +541,7 @@ def display_interactive_plot(plot_path: str) -> None:
                 # Attempt to parse JSON
                 plot_data = json.loads(fig_json)
                 fig = go.Figure(plot_data)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig)
                 logger.info(f"Successfully displayed plot from {plot_path}")
                 
             except json.JSONDecodeError as e:
@@ -914,8 +914,8 @@ def show_molecular_structures(compound_folder: str) -> None:
             if view_mode == "2D Structure":
                 img_path = os.path.join(structure_folder, mol_data['2D_Image'])
                 if os.path.exists(img_path):
-                    # Updated to use_container_width instead of use_column_width
-                    st.image(img_path, use_container_width=True)
+                        # Stretch image to container width
+                    st.image(img_path)
                 else:
                     st.warning("2D structure image not available.")
             else:  # 3D Structure
@@ -1062,7 +1062,7 @@ def show_static_plot_with_controls(df: pd.DataFrame, x_col: str, y_col: str, com
         )
     
     # Display plot
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig)
     
     # Add helpful info
     if color_by != "None (All Same Color)":
@@ -1085,4 +1085,4 @@ def show_static_plot_with_controls(df: pd.DataFrame, x_col: str, y_col: str, com
             
             # Flatten multi-index columns
             grouped_stats.columns = ['_'.join(col).strip() for col in grouped_stats.columns.values]
-            st.dataframe(grouped_stats, use_container_width=True)
+            st.dataframe(grouped_stats)
