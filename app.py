@@ -6,7 +6,7 @@ import json
 from config import RESULTS_DIR, ACTIVITY_TYPES
 from modules.utils import get_available_compounds, validate_csv_file, zip_results, zip_compound_results
 from modules.compound_manager import process_and_store, display_compound_summary, process_csv_batch
-from modules.data_processor import load_results
+from modules.data_processor import load_results, get_compound_folder
 from modules.visualization import show_interactive_plots, show_molecular_structures
 #from modules.molecule_viewer import molecule_viewer_app
 from modules.api_client import batch_fetch_activities
@@ -735,12 +735,16 @@ def display_compound_details_view():
         with data_tabs[2]:
             st.markdown("**PDB Structural Evidence**")
 
-            # Load detailed PDB structures directly
-            compound_folder = os.path.join(RESULTS_DIR, selected_compound.replace(' ', '_'))
+            # Load detailed PDB structures from local or Azure (using same logic as results loader)
             compound_name = selected_compound.replace(' ', '_')
-            pdb_details_path = os.path.join(compound_folder, f"{compound_name}_pdb_structures_detailed.csv")
+            compound_folder = get_compound_folder(compound_name)
 
-            if os.path.exists(pdb_details_path):
+            if compound_folder:
+                pdb_details_path = os.path.join(compound_folder, f"{compound_name}_pdb_structures_detailed.csv")
+            else:
+                pdb_details_path = None
+
+            if pdb_details_path and os.path.exists(pdb_details_path):
                 try:
                     pdb_details_df = pd.read_csv(pdb_details_path)
 
