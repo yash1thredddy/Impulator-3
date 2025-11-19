@@ -18,6 +18,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 st.set_page_config(layout="wide")
+
+# Start background upload worker (only once at app startup)
+from modules.upload_worker import start_upload_worker
+from modules.azure_storage import is_cloud_deployment
+
+if is_cloud_deployment():
+    start_upload_worker()
+    logger.info("✅ Background upload worker initialized")
 # Initialize session state
 def init_session_state():
     """Initialize all session state variables."""
@@ -57,9 +65,9 @@ def reset_processing_state():
     st.session_state.processing_progress = 0
 
 def display_home_view():
-    """Display the home/landing page with compound search and listing."""
-    
-    
+    """Display the home/landing page with compound search and listing (using lightweight metadata)."""
+    from modules.metadata_manager import get_all_compounds_metadata
+
     st.markdown("""
     <style>
     .app-title {
@@ -79,6 +87,7 @@ def display_home_view():
     <h1 class="app-title">🔬 IMPs Navigator</h1>
     <p class="subtitle">Compound Library & Analysis Tool for better Insights</p>
     """, unsafe_allow_html=True)
+
     # Top controls for searching and adding new compounds
     search_col, button_col = st.columns([4, 1])
     with search_col:
@@ -87,7 +96,7 @@ def display_home_view():
             value=st.session_state.compound_search_query,
             placeholder="Enter compound name...",
             key="compound_search",
-            label_visibility="collapsed"  # Hides the label
+            label_visibility="collapsed"
         )
         st.session_state.compound_search_query = search_query
 
@@ -95,124 +104,110 @@ def display_home_view():
         if st.button("➕ New Compound", key="add_new_compound", use_container_width=True):
             st.session_state.current_view = "analyze"
             st.rerun()
-    
-    # Get available compounds
-    compounds_list = get_available_compounds()
-    
-    if not compounds_list:
-        st.info("No compounds have been analyzed yet. Click 'Analyze New Compound' to get started.")
+
+    # Get metadata for all compounds (fast - only downloads metadata CSV ~100KB)
+    metadata_df = get_all_compounds_metadata()
+
+    if metadata_df is None or metadata_df.empty:
+        st.info("No compounds have been analyzed yet. Click '➕ New Compound' to get started.")
         return
-    
+
     # Filter compounds based on search query
     if search_query:
-        filtered_compounds = [c for c in compounds_list if search_query.lower() in c.lower()]
+        filtered_df = metadata_df[metadata_df['compound_name'].str.lower().str.contains(search_query.lower())]
     else:
-        filtered_compounds = compounds_list
-    
-    if not filtered_compounds:
+        filtered_df = metadata_df
+
+    if filtered_df.empty:
         st.warning(f"No compounds found matching '{search_query}'")
         return
-    
+
     # Display compounds in a grid
-    st.subheader(f"Available Compounds ({len(filtered_compounds)})")
-    
+    st.subheader(f"Available Compounds ({len(filtered_df)})")
+
     # Add styling for consistent cards
     st.markdown("""
     <style>
     .compound-card {
-        height: 1px !important;  /* Set an appropriate fixed height */
+        height: 1px !important;
         overflow: hidden;
     }
     </style>
     """, unsafe_allow_html=True)
-    
+
     # Create a grid of compounds - 4 columns
     cols = st.columns(4)
-    for i, compound in enumerate(filtered_compounds):
+    for i, row in enumerate(filtered_df.itertuples()):
         with cols[i % 4]:
             # Create a single container for the entire card with a border
             with st.container(border=True):
                 # Compound name centered
-                st.markdown(f"<h4 style='text-align: center; margin: 5px 0;'>{compound}</h4>", unsafe_allow_html=True)
-                
-                # Try to get some basic info about the compound
+                compound_name = row.compound_name
+                st.markdown(f"<h4 style='text-align: center; margin: 5px 0;'>{compound_name}</h4>", unsafe_allow_html=True)
+
+                # Display the molecular structure from SMILES
                 try:
-                    df = load_results(compound)
-                    if df is not None and not df.empty:
-                        # Get SMILES if available
-                        smiles = None
-                        if 'SMILES' in df.columns:
-                            smiles = df['SMILES'].iloc[0]
-                            
-                            # Display the molecular structure using RDKit and HTML
-                            try:
-                                from rdkit import Chem
-                                from rdkit.Chem import Draw
-                                import base64
-                                from io import BytesIO
-                                
-                                # Generate the molecular image
-                                mol = Chem.MolFromSmiles(smiles)
-                                if mol:
-                                    img = Draw.MolToImage(mol, size=(350, 250))
-                                    
-                                    # Convert image to base64 for HTML display
-                                    buffered = BytesIO()
-                                    img.save(buffered, format="PNG")
-                                    img_str = base64.b64encode(buffered.getvalue()).decode()
-                                    
-                                    # Display the image in a centered container
-                                    st.markdown(
-                                        f'<div style="display: flex; justify-content: center; padding: 10px;">'
-                                        f'<img src="data:image/png;base64,{img_str}" alt="{compound}" />'
-                                        f'</div>',
-                                        unsafe_allow_html=True
-                                    )
-                                else:
-                                    st.warning("Could not render molecule from SMILES")
-                            except Exception as e:
-                                logger.error(f"Error rendering molecule: {str(e)}")
-                                # Fall back to displaying SMILES as text
-                                if smiles:
-                                    # Truncate if too long
-                                    if len(smiles) > 30:
-                                        display_smiles = smiles[:27] + "..."
-                                    else:
-                                        display_smiles = smiles
-                                    st.markdown(f"**SMILES:** `{display_smiles}`")
-                        
-                        # Display other compound info
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            # Try to load metadata to get similarity threshold
-                            try:
-                                metadata_file = os.path.join(RESULTS_DIR, compound, f"{compound}_metadata.json")
-                                if os.path.exists(metadata_file):
-                                    with open(metadata_file, 'r') as f:
-                                        metadata = json.load(f)
-                                        sim_threshold = metadata.get('similarity_threshold', 90)
-                                        st.markdown(f"**Sim Threshold:** {sim_threshold}%")
-                                else:
-                                    st.markdown("**Sim Threshold:** N/A")
-                            except Exception as e:
-                                logger.error(f"Error loading metadata: {str(e)}")
-                                st.markdown("**Sim Threshold:** N/A")
-                        
-                        with col2:
-                            # Count unique ChEMBL IDs
-                            if 'ChEMBL_ID' in df.columns:
-                                unique_chembl = df['ChEMBL_ID'].nunique()
-                                st.markdown(f"**Similar:** {unique_chembl}")
+                    smiles = row.smiles if hasattr(row, 'smiles') and row.smiles else None
+
+                    if smiles and smiles != '' and smiles != 'nan':
+                        from rdkit import Chem
+                        from rdkit.Chem import Draw
+                        import base64
+                        from io import BytesIO
+
+                        # Generate the molecular image
+                        mol = Chem.MolFromSmiles(smiles)
+                        if mol:
+                            img = Draw.MolToImage(mol, size=(350, 250))
+
+                            # Convert image to base64 for HTML display
+                            buffered = BytesIO()
+                            img.save(buffered, format="PNG")
+                            img_str = base64.b64encode(buffered.getvalue()).decode()
+
+                            # Display the image in a centered container
+                            st.markdown(
+                                f'<div style="display: flex; justify-content: center; padding: 10px;">'
+                                f'<img src="data:image/png;base64,{img_str}" alt="{compound_name}" />'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            st.info("Structure not available")
                     else:
-                        # Show warning about missing data directly in the card
-                        st.warning(f"No results found for {compound}. CSV file is missing.")
+                        st.info("Structure not available")
                 except Exception as e:
-                    logger.error(f"Error loading compound info: {str(e)}")
-                    st.error(f"Error loading data: {str(e)}")
-                
+                    logger.error(f"Error rendering molecule for {compound_name}: {str(e)}")
+                    st.info("Structure not available")
+
+                # Display compound statistics from metadata
+                # Row 1: ChEMBL ID
+                if hasattr(row, 'chembl_id') and row.chembl_id and str(row.chembl_id) != 'nan':
+                    st.markdown(f"<small style='color: #666;'>ChEMBL: {row.chembl_id}</small>", unsafe_allow_html=True)
+
+                # Row 2: Total Activities and Outliers
+                col1, col2 = st.columns(2)
+                with col1:
+                    total_activities = row.total_activities if hasattr(row, 'total_activities') else 0
+                    st.markdown(f"**Activities:** {total_activities}")
+
+                with col2:
+                    num_outliers = row.num_outliers if hasattr(row, 'num_outliers') else 0
+                    st.markdown(f"**Outliers:** {num_outliers}")
+
+                # Row 3: QED and Similarity Threshold
+                col1, col2 = st.columns(2)
+                with col1:
+                    qed = row.qed if hasattr(row, 'qed') else 0.0
+                    st.markdown(f"**QED:** {qed:.2f}")
+
+                with col2:
+                    similarity_threshold = row.similarity_threshold if hasattr(row, 'similarity_threshold') else 90
+                    st.markdown(f"**Similarity:** {similarity_threshold}%")
+
                 # Button to view compound details
-                if st.button(f"View Details", key=f"view_{compound}", type="primary", use_container_width=True):
-                    st.session_state.selected_compound = compound
+                if st.button(f"View Details", key=f"view_{compound_name}", type="primary", use_container_width=True):
+                    st.session_state.selected_compound = compound_name
                     st.session_state.current_view = "compound_details"
                     st.rerun()
     
@@ -1101,32 +1096,17 @@ def main():
             progress_container = st.container()
             with progress_container:
                 st.info(f"⏳ Processing {st.session_state.processing_compound} in background...")
-                st.progress(st.session_state.processing_progress)
-        
-        # Alert for newly processed compound (only show if compound still exists)
-        if st.session_state.show_new_compound_alert:
-            new_compound = st.session_state.get('last_processed_compound')
-            available_compounds = get_available_compounds()
-
-            # Only show alert if the compound still exists
-            if new_compound and new_compound in available_compounds:
-                alert_container = st.container()
-                with alert_container:
-                    st.success(f"✅ New compound processed: {new_compound}")
-                    col1, col2 = st.columns([1, 1])
-                    with col1:
-                        if st.button("View Results Now"):
-                            st.session_state.selected_compound = new_compound
-                            st.session_state.current_view = "compound_details"
-                            st.session_state.show_new_compound_alert = False
-                            st.rerun()
-                    with col2:
-                        if st.button("Dismiss"):
-                            st.session_state.show_new_compound_alert = False
-                            st.rerun()
-            else:
-                # Compound was deleted or doesn't exist, clear the alert
-                st.session_state.show_new_compound_alert = False
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("View Results Now"):
+                        st.session_state.selected_compound = st.session_state.processing_compound
+                        st.session_state.current_view = "compound_details"
+                        st.session_state.show_new_compound_alert = False
+                        st.rerun()
+                with col2:
+                    if st.button("Dismiss"):
+                        st.session_state.show_new_compound_alert = False
+                        st.rerun()
         
         # View routing based on current view state
         if st.session_state.current_view == "home":

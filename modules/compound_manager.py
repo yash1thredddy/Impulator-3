@@ -18,31 +18,46 @@ import plotly.graph_objects as go
 from config import RESULTS_DIR, ACTIVITY_TYPES
 from modules.data_processor import process_compound, load_results
 from modules.utils import validate_compound_name, sanitize_compound_name
+from modules.azure_storage import get_azure_storage
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 def check_existing_compound(
-    compound_name: str, 
-    smiles: str, 
-    similarity_threshold: int, 
+    compound_name: str,
+    smiles: str,
+    similarity_threshold: int,
     activity_types: List[str] = ACTIVITY_TYPES
 ) -> Optional[str]:
     """
-    Check if the compound already exists and prompt the user for action.
-    
+    Check if the compound already exists (using metadata for fast checking of both local and Azure).
+
     Args:
         compound_name: Name of the compound
         smiles: SMILES string
         similarity_threshold: Similarity threshold
         activity_types: List of activity types to process
-    
+
     Returns:
         Optional[str]: Validated compound name or None if operation cancelled
     """
-    compound_folder = os.path.join(RESULTS_DIR, compound_name.replace(' ', '_'))
+    # Use metadata to check existence (checks both local AND Azure storage)
+    from modules.metadata_manager import get_all_compounds_metadata
 
-    if os.path.exists(compound_folder):
+    exists = False
+    metadata_df = get_all_compounds_metadata()
+
+    if metadata_df is not None and len(metadata_df) > 0:
+        # Check if compound name exists in metadata (faster and checks both sources)
+        exists = compound_name in metadata_df['compound_name'].values
+        logger.info(f"Checked compound '{compound_name}' in metadata: exists={exists}")
+    else:
+        # Fallback to local folder check if metadata unavailable
+        compound_folder = os.path.join(RESULTS_DIR, compound_name.replace(' ', '_'))
+        exists = os.path.exists(compound_folder)
+        logger.info(f"Metadata unavailable, checked local folder: exists={exists}")
+
+    if exists:
         st.warning(f"⚠️ Compound **'{compound_name}'** already exists!")
 
         # Initialize session state variables if not set
@@ -100,7 +115,9 @@ def check_existing_compound(
                     return None
 
             elif st.session_state.compound_action == "❌ Replace existing compound":
-                shutil.rmtree(compound_folder)  
+                # Delete compound from both local and Azure storage
+                from modules.utils import delete_compound
+                delete_compound(compound_name)
                 st.success(f"✅ Replacing compound **'{compound_name}'** with new parameters.")
                 return compound_name
 
@@ -191,6 +208,31 @@ def process_and_store(
             
             if results is not None:
                 st.success(f"Successfully processed {validated_compound_name}")
+
+                # Extract and save metadata (always, regardless of Azure status)
+                from modules.azure_storage import get_azure_storage
+                from modules.metadata_manager import extract_compound_metadata, save_metadata_to_local
+                from modules.upload_worker import queue_compound_upload
+
+                compound_folder = os.path.join(RESULTS_DIR, validated_compound_name)
+
+                # Extract metadata
+                metadata = extract_compound_metadata(validated_compound_name, compound_folder)
+
+                # Always save metadata locally first
+                save_metadata_to_local(metadata)
+
+                # Clear metadata cache to show new compound immediately
+                from modules.metadata_manager import get_all_compounds_metadata
+                get_all_compounds_metadata.clear()
+
+                # Queue for background upload to Azure if enabled (non-blocking!)
+                azure_storage = get_azure_storage()
+                if azure_storage.enabled:
+                    # Queue for background upload (returns immediately!)
+                    queue_compound_upload(validated_compound_name, compound_folder, metadata)
+                    st.info("📤 Queued for upload to cloud storage (processing in background)")
+
                 if 'processing_complete' in st.session_state:
                     st.session_state.processing_complete = True
                 return True

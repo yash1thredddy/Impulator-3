@@ -627,6 +627,15 @@ def process_compound(
         logger.error(f"Error processing compound {compound_name}: {str(e)}")
         st.error(f"Error processing compound: {str(e)}")
 
+        # Cleanup: Delete the folder if it was created but processing failed
+        try:
+            if 'compound_folder' in locals() and os.path.exists(compound_folder):
+                import shutil
+                shutil.rmtree(compound_folder)
+                logger.info(f"Cleaned up failed processing folder: {compound_folder}")
+        except Exception as cleanup_error:
+            logger.error(f"Error cleaning up folder: {cleanup_error}")
+
         # Reset processing state on error
         if 'processing_compound' in st.session_state:
             st.session_state.processing_compound = None
@@ -636,23 +645,77 @@ def process_compound(
         return None
 
 
-def load_results(compound_name: str) -> Optional[pd.DataFrame]:
+@st.cache_data(ttl=3600)
+def get_compound_folder(compound_name: str) -> Optional[str]:
     """
-    Load CSV results for the selected compound with error handling.
+    Get the folder path for a compound, downloading from Azure if needed.
+    Cached for 1 hour to avoid repeated downloads.
 
     Args:
         compound_name: Name of the compound
+
+    Returns:
+        Optional[str]: Path to compound folder or None if not found
+    """
+    try:
+        from modules.azure_storage import get_azure_storage
+        import tempfile
+
+        compound_name = compound_name.replace(" ", "_")
+        local_folder = os.path.join(RESULTS_DIR, compound_name)
+
+        # Check if exists locally
+        if os.path.exists(local_folder):
+            logger.info(f"Using local folder for {compound_name}")
+            return local_folder
+
+        # Try downloading from Azure
+        azure_storage = get_azure_storage()
+        if azure_storage.enabled:
+            logger.info(f"Downloading {compound_name} from Azure...")
+
+            # Use temp directory for download
+            temp_dir = tempfile.gettempdir()
+            download_path = os.path.join(temp_dir, compound_name)
+
+            # Download and extract from Azure
+            if azure_storage.download_compound_zip(compound_name, download_path):
+                logger.info(f"Successfully downloaded {compound_name} from Azure to {download_path}")
+                return download_path
+
+        logger.warning(f"Compound {compound_name} not found in local or Azure storage")
+        return None
+
+    except Exception as e:
+        logger.error(f"Error getting compound folder for {compound_name}: {str(e)}")
+        return None
+
+
+def load_results(compound_name: str, results_dir: str = RESULTS_DIR) -> Optional[pd.DataFrame]:
+    """
+    Load CSV results for the selected compound with error handling.
+    Automatically downloads from Azure if not available locally.
+
+    Args:
+        compound_name: Name of the compound
+        results_dir: Directory containing results (defaults to RESULTS_DIR, can be overridden)
 
     Returns:
         Optional[pd.DataFrame]: Results dataframe or None if error
     """
     try:
         compound_name = compound_name.replace(" ", "_")
-        file_path = os.path.join(RESULTS_DIR, compound_name,
-                                f"{compound_name}_complete_results.csv")
+
+        # Get compound folder (uses cache, downloads from Azure if needed)
+        compound_folder = get_compound_folder(compound_name)
+        if compound_folder is None:
+            st.warning(f"⚠️ No results found for {compound_name}.")
+            return None
+
+        file_path = os.path.join(compound_folder, f"{compound_name}_complete_results.csv")
 
         if not os.path.exists(file_path):
-            st.warning(f"⚠️ No results found for {compound_name}. CSV file is missing.")
+            st.warning(f"⚠️ Results file not found for {compound_name}.")
             return None
 
         df = pd.read_csv(file_path)
