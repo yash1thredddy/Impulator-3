@@ -429,8 +429,8 @@ def molecule_viewer_app(compound_folder: str, style_settings: Optional[Dict] = N
             st.subheader("2D Structure")
             img_path = os.path.join(structure_folder, mol_data['2D_Image'])
             if os.path.exists(img_path):
-                # Updated to use_container_width instead of use_column_width
-                st.image(img_path, use_container_width=True)
+                # Display 2D structure image
+                st.image(img_path)
             else:
                 st.warning("2D structure image not available.")
         

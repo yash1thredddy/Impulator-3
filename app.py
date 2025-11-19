@@ -49,7 +49,8 @@ def init_session_state():
         "last_similarity_threshold": 90,  # Default similarity threshold
         "molecule_viewer_tab": "3D",  # Default tab for molecule viewer
         "show_delete_confirmation": False,  # Add this new line
-        "deletion_success": False  # Add this new line
+        "deletion_success": False,  # Add this new line
+        "compound_details_tab": "summary",  # Persist selected tab in details view
     }
     
     for var, default in state_vars.items():
@@ -101,7 +102,7 @@ def display_home_view():
         st.session_state.compound_search_query = search_query
 
     with button_col:
-        if st.button("➕ New Compound", key="add_new_compound", use_container_width=True):
+        if st.button("➕ New Compound", key="add_new_compound"):
             st.session_state.current_view = "analyze"
             st.rerun()
 
@@ -206,7 +207,7 @@ def display_home_view():
                     st.markdown(f"**Similarity:** {similarity_threshold}%")
 
                 # Button to view compound details
-                if st.button(f"View Details", key=f"view_{compound_name}", type="primary", use_container_width=True):
+                if st.button(f"View Details", key=f"view_{compound_name}", type="primary"):
                     st.session_state.selected_compound = compound_name
                     st.session_state.current_view = "compound_details"
                     st.rerun()
@@ -235,12 +236,12 @@ def display_delete_confirmation():
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("❌ Cancel", key="cancel_delete", use_container_width=True):
+        if st.button("❌ Cancel", key="cancel_delete"):
             st.session_state.show_delete_confirmation = False
             st.rerun()
     
     with col2:
-        if st.button("🗑️ Delete Permanently", key="confirm_delete", use_container_width=True):
+        if st.button("🗑️ Delete Permanently", key="confirm_delete"):
             with st.spinner(f"Deleting {st.session_state.selected_compound}..."):
                 # Import here to avoid circular imports
                 from modules.utils import delete_compound
@@ -281,7 +282,7 @@ def display_compound_details_view():
         st.markdown(f"<h1 style='text-align: center;'>🔬 {st.session_state.selected_compound}</h1>", unsafe_allow_html=True)
 
     with col3:
-        if st.button("🗑️ Delete", key="delete_compound_btn", type="secondary", use_container_width=True):
+        if st.button("🗑️ Delete", key="delete_compound_btn", type="secondary"):
             st.session_state.show_delete_confirmation = True
             st.rerun()
 
@@ -303,18 +304,34 @@ def display_compound_details_view():
         st.warning("No data available for this compound.")
         return
     #size 
-    
-    # Create tabs for different sections
-    tabs = st.tabs([
-        "📊 **Summary**", 
-        "📈 **Interactive Plots**", 
-        "🧪 **Molecules**", 
-        "📋 **Data Table**",
-        "⚙️ **Debug**"
-    ])
-    
+
+    # Custom top-level tabs using radio to persist selection across reruns
+    tab_labels = [
+        "📊 Summary",
+        "📈 Interactive Plots",
+        "🧪 Molecules",
+        "📋 Data Table",
+        "⚙️ Debug",
+    ]
+    if "compound_details_tab" not in st.session_state:
+        st.session_state.compound_details_tab = tab_labels[0]
+
+    try:
+        default_index = tab_labels.index(st.session_state.compound_details_tab)
+    except ValueError:
+        default_index = 0
+
+    selected_tab_label = st.radio(
+        "View",
+        tab_labels,
+        index=default_index,
+        key="compound_details_tab_selector",
+        horizontal=True,
+    )
+    st.session_state.compound_details_tab = selected_tab_label
+
     # Summary tab
-    with tabs[0]:
+    if selected_tab_label == "📊 Summary":
         display_compound_summary(
             df_results=df_results,
             compound_name=selected_compound,
@@ -322,7 +339,7 @@ def display_compound_details_view():
         )
     
     # Interactive plots tab
-    with tabs[1]:
+    elif selected_tab_label == "📈 Interactive Plots":
         st.markdown("## 📊 Visualizations")
         st.info("💡 Expand sections below to generate plots on-demand with customizable parameters")
 
@@ -359,7 +376,7 @@ def display_compound_details_view():
                     )
 
                     # Display the plot
-                    st.plotly_chart(activity_box_fig, use_container_width=True)
+                    st.plotly_chart(activity_box_fig)
                 else:
                     st.warning("Activity data not available for this dataset")
 
@@ -499,7 +516,7 @@ def display_compound_details_view():
                                 )
 
                                 # Display the plot
-                                st.plotly_chart(fig, use_container_width=True)
+                                st.plotly_chart(fig)
 
             with box_tabs[1]:
                 st.markdown("**Binding Efficiency Index (BEI) Boxplots**")
@@ -596,7 +613,7 @@ def display_compound_details_view():
                                 )
 
                                 # Display the plot
-                                st.plotly_chart(fig, use_container_width=True)
+                                st.plotly_chart(fig)
 
         # Molecular Properties Expander
         with st.expander("🧪 Molecular Properties (PSA/MW vs QED)", expanded=False):
@@ -629,7 +646,7 @@ def display_compound_details_view():
                     )
 
                     # Display the plot
-                    st.plotly_chart(psaomw_qed_fig, use_container_width=True)
+                    st.plotly_chart(psaomw_qed_fig)
                 else:
                     st.warning("Required molecular property data (TPSA, Molecular_Weight, QED) not available for this dataset")
 
@@ -640,7 +657,7 @@ def display_compound_details_view():
             custom_visualization_builder(df_results, selected_compound)
     
     # Molecule viewer tab
-    with tabs[2]:
+    elif selected_tab_label == "🧪 Molecules":
         # Only show sidebar when in Molecules tab
         from modules.molecule_viewer import molecule_viewer_app, get_molecule_style_controls
 
@@ -652,7 +669,7 @@ def display_compound_details_view():
         molecule_viewer_app(compound_folder, style_settings, df_results)
     
     # Data table tab with 4 sub-tabs
-    with tabs[3]:
+    elif selected_tab_label == "📋 Data Table":
         st.subheader("📋 Data Tables")
 
         # Create sub-tabs for different data views
@@ -689,7 +706,7 @@ def display_compound_details_view():
             df_data_analysis = df_results[available_cols].copy()
 
             st.caption(f"📊 Showing {len(df_data_analysis)} rows × {len(available_cols)} columns")
-            st.dataframe(df_data_analysis, use_container_width=True, height=500)
+            st.dataframe(df_data_analysis, height=500)
 
             # Download button
             csv_data = df_data_analysis.to_csv(index=False)
@@ -719,7 +736,7 @@ def display_compound_details_view():
             df_interpretation = df_results[available_cols].copy()
 
             st.caption(f"📊 Showing {len(df_interpretation)} rows × {len(available_cols)} columns")
-            st.dataframe(df_interpretation, use_container_width=True, height=500)
+            st.dataframe(df_interpretation, height=500)
 
             # Download button
             csv_interpretation = df_interpretation.to_csv(index=False)
@@ -807,7 +824,7 @@ def display_compound_details_view():
             display_df = display_df.drop(columns=cols_to_remove)
 
             st.caption(f"📊 Showing {len(display_df)} rows × {len(display_df.columns)} columns")
-            st.dataframe(display_df, use_container_width=True, height=500)
+            st.dataframe(display_df, height=500)
 
             # Download button - provide filtered version without interpretive flags
             csv_complete = display_df.to_csv(index=False)
@@ -848,7 +865,7 @@ def display_compound_details_view():
                             )
     
     # Debug tab
-    with tabs[4]:
+    elif selected_tab_label == "⚙️ Debug":
         st.subheader("🔍 Debug Information")
         
         # Check data columns and NaN counts
@@ -993,7 +1010,7 @@ def display_analyze_view():
         # Store the input type for processing
         input_format = input_type.lower()
         
-        if st.button("Process Compound", key="process_single_compound", type="primary", use_container_width=False):
+        if st.button("Process Compound", key="process_single_compound", type="primary"):
             if not selected_activities:
                 st.error("Please select at least one activity type to process.")
                 return
@@ -1064,7 +1081,7 @@ def display_analyze_view():
                 if name_changes:
                     st.warning(f"⚠️ **{len(name_changes)} compound name(s) contain invalid characters and will be sanitized:**")
                     changes_df = pd.DataFrame(name_changes)
-                    st.dataframe(changes_df, use_container_width=True)
+                    st.dataframe(changes_df)
                     st.info("📝 These names will be automatically cleaned to ensure compatibility with file systems.")
 
                 if st.button("Process CSV", key="process_csv_batch", type="primary"):
