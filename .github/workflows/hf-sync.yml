@@ -1,4 +1,4 @@
-name: Deploy to Hugging Face Spaces
+name: Sync to Hugging Face Space
 
 on:
   push:
@@ -6,30 +6,17 @@ on:
       - main
 
 jobs:
-  deploy:
+  sync:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Sync to Hugging Face Space
+        uses: huggingface/hub-action@v1
         with:
-          python-version: '3.10'
-
-      - name: Install huggingface_hub
-        run: pip install huggingface_hub
-
-      - name: Login and Upload to HF Space
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-        run: |
-          huggingface-cli login --token "$HF_TOKEN"
-          huggingface-cli upload \
-            --repo-id yash1th26/Impulator \
-            --repo-type space \
-            --commit-message "Auto-sync from GitHub main" \
-            ./
-      - name: Confirm Deployment
-        run: echo "Deployment to Hugging Face Spaces completed successfully."
+          repo-token: ${{ secrets.HF_TOKEN }}
+          repo-id: yash1th26/Impulator
+          repo-type: space
+          revision: main
