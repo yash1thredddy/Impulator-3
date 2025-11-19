@@ -374,12 +374,11 @@ def display_compound_details_view():
                 horizontal=True
             )
 
-            if st.button("Generate Scatter Plot", key="btn_scatter"):
-                from modules.visualization import show_static_plot_with_controls
-                if plot_type == "SEI vs BEI":
-                    show_static_plot_with_controls(df_results, "SEI", "BEI", compound_folder)
-                else:
-                    show_static_plot_with_controls(df_results, "NSEI", "NBEI", compound_folder)
+            from modules.visualization import show_static_plot_with_controls
+            if plot_type == "SEI vs BEI":
+                show_static_plot_with_controls(df_results, "SEI", "BEI", compound_folder)
+            else:
+                show_static_plot_with_controls(df_results, "NSEI", "NBEI", compound_folder)
 
         # Efficiency Boxplots Expander
         with st.expander("📦 Efficiency Boxplots (Grouped by Compound)", expanded=False):

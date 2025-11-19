@@ -16,7 +16,7 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from config import RESULTS_DIR, ACTIVITY_TYPES
-from modules.data_processor import process_compound, load_results
+from modules.data_processor import process_compound, load_results, get_compound_folder
 from modules.utils import validate_compound_name, sanitize_compound_name
 from modules.azure_storage import get_azure_storage
 
@@ -344,8 +344,14 @@ def display_compound_summary(
     # Try to load metadata from file if similarity_threshold is not provided
     if similarity_threshold is None:
         try:
-            metadata_file = os.path.join(RESULTS_DIR, compound_name, f"{compound_name}_metadata.json")
-            if os.path.exists(metadata_file):
+            # Resolve compound folder from local or Azure storage
+            compound_folder = get_compound_folder(compound_name.replace(' ', '_'))
+            metadata_file = (
+                os.path.join(compound_folder, f"{compound_name}_metadata.json")
+                if compound_folder is not None else None
+            )
+
+            if metadata_file and os.path.exists(metadata_file):
                 with open(metadata_file, 'r') as f:
                     metadata = json.load(f)
                     similarity_threshold = metadata.get('similarity_threshold', 90)
@@ -787,13 +793,16 @@ def display_compound_summary(
 
         # PDB Structural Evidence (Component 4) - Load from separate PDB summary file
         if 'PDB_Score' in df_results.columns:
-            # Build compound folder path
-            compound_folder = os.path.join(RESULTS_DIR, compound_name.replace(' ', '_'))
+            # Resolve compound folder from local or Azure storage
+            compound_folder = get_compound_folder(compound_name.replace(' ', '_'))
 
-            # Try to load PDB summary CSV
-            pdb_summary_path = os.path.join(compound_folder, f"{compound_name}_pdb_summary.csv")
+            # Try to load PDB summary CSV (if folder is available)
+            pdb_summary_path = (
+                os.path.join(compound_folder, f"{compound_name}_pdb_summary.csv")
+                if compound_folder is not None else None
+            )
 
-            if os.path.exists(pdb_summary_path):
+            if pdb_summary_path and os.path.exists(pdb_summary_path):
                 try:
                     pdb_summary_df = pd.read_csv(pdb_summary_path)
 
@@ -938,9 +947,12 @@ def display_compound_summary(
                 st.success("✅ No IMP candidates detected - all compounds show specific activity profiles!")
 
             # Display IMP Report if available
-            compound_folder = os.path.join(RESULTS_DIR, compound_name.replace(' ', '_'))
-            imp_report_path = os.path.join(compound_folder, f"{compound_name}_imp_report.txt")
-            if os.path.exists(imp_report_path):
+            compound_folder = get_compound_folder(compound_name.replace(' ', '_'))
+            imp_report_path = (
+                os.path.join(compound_folder, f"{compound_name}_imp_report.txt")
+                if compound_folder is not None else None
+            )
+            if imp_report_path and os.path.exists(imp_report_path):
                 st.markdown("---")
                 st.markdown("**📄 IMP Analysis Report:**")
                 try:
