@@ -1,3 +1,40 @@
 pylanche
 tests/
 analysis_results/
+
+# Local metadata CSV
+compounds_metadata.csv
+
+# Streamlit secrets (contains Azure credentials)
+.streamlit/secrets.toml
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temp files
+*.tmp
+.cache/

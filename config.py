@@ -11,13 +11,46 @@ RESULTS_DIR = os.path.join(BASE_DIR, "analysis_results")
 # Create directories if they don't exist
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
+# Environment Detection
+def get_deployment_environment() -> str:
+    """
+    Detect the deployment environment.
+
+    Returns:
+        str: 'hf_spaces', 'streamlit_cloud', 'docker', or 'local'
+    """
+    # Hugging Face Spaces
+    if os.environ.get('SPACE_ID') or os.environ.get('SPACE_AUTHOR_NAME'):
+        return 'hf_spaces'
+
+    # Streamlit Cloud
+    if os.environ.get('STREAMLIT_SHARING_MODE') or os.path.exists('/mount/src'):
+        return 'streamlit_cloud'
+
+    # Docker
+    if os.path.exists('/.dockerenv'):
+        return 'docker'
+
+    # Local
+    return 'local'
+
 # API and Processing Constants
 ACTIVITY_TYPES = ["IC50", "EC50", "Ki", "Kd", "AC50", "GI50", "MIC"]
 MAX_CSV_SIZE_MB = 10
 
-# API Batch Processing Settings
+# API Batch Processing Settings (environment-aware)
 MAX_BATCH_SIZE = 950  # Maximum number of items per batch
-MAX_WORKERS = 5      # Number of concurrent workers for API requests
+
+# Adjust MAX_WORKERS based on environment
+DEPLOYMENT_ENV = get_deployment_environment()
+if DEPLOYMENT_ENV == 'hf_spaces':
+    MAX_WORKERS = 8  # HF Spaces has 2 vCPU, 16 GB RAM - can handle more workers
+elif DEPLOYMENT_ENV == 'streamlit_cloud':
+    MAX_WORKERS = 3  # Streamlit Cloud has limited resources (1 GB RAM)
+elif DEPLOYMENT_ENV == 'docker':
+    MAX_WORKERS = 5  # Standard Docker deployment
+else:
+    MAX_WORKERS = 5  # Local development
 
 # API Retry Configuration
 MAX_RETRIES = 3

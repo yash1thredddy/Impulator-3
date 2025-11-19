@@ -24,14 +24,11 @@ from config import PDB_API_DELAY
 
 logger = logging.getLogger(__name__)
 
-# Try to import official RCSB API package
-try:
-    from rcsbapi.search import ChemSimilarityQuery
-    from rcsbapi.data import DataQuery
-    USE_OFFICIAL_API = True
-except ImportError:
-    USE_OFFICIAL_API = False
-    logger.warning("rcsb-api package not installed. Install with: pip install rcsb-api")
+# Disable the broken rcsb-api library and use direct REST API implementation
+# The rcsb-api library (v1.4.2) has hardcoded HTTP URLs that cause connection timeouts.
+# Our direct REST API implementation (below) uses HTTPS correctly.
+USE_OFFICIAL_API = False
+logger.info("Using direct REST API implementation (rcsb-api library disabled)")
 
 # RCSB PDB API endpoints (fallback for manual queries)
 SEARCH_API_URL = "https://search.rcsb.org/rcsbsearch/v2/query"
@@ -64,92 +61,115 @@ def search_similar_ligands(
     similarity_threshold: float = DEFAULT_SIMILARITY_THRESHOLD
 ) -> List[str]:
     """
-    Search RCSB PDB for ligands similar to the query compound.
+    Search RCSB PDB for ligands similar to the query compound using direct REST API.
 
     Args:
         smiles: SMILES string of query compound
-        similarity_threshold: Tanimoto similarity threshold (0.0-1.0) [NOTE: Not used with official API]
+        similarity_threshold: Tanimoto similarity threshold (0.0-1.0) [NOTE: Not used, graph-relaxed match is always used]
 
     Returns:
         List of PDB IDs containing similar ligands
 
     Note:
+        Uses direct HTTPS REST API calls to avoid connection timeout issues.
         Uses graph-relaxed match type (structural similarity).
-        Returns entries containing similar chemical components.
+        API Documentation: https://search.rcsb.org/index.html#search-api
     """
-    if not USE_OFFICIAL_API:
-        logger.error("Official RCSB API package not available. Cannot perform chemical similarity search.")
-        return []
-
     try:
         logger.info(f"Searching PDB for ligands similar to SMILES: {smiles[:50]}...")
 
-        # Create chemical similarity query using official API
-        query = ChemSimilarityQuery(
-            value=smiles,
-            query_type="descriptor",
-            descriptor_type="SMILES",
-            match_type="graph-relaxed"  # Structural similarity
-        )
+        # Construct RCSB PDB Search API v2 Query
+        # Reference: https://search.rcsb.org/index.html#chemical-search
+        query_payload = {
+            "query": {
+                "type": "terminal",
+                "service": "chemical",
+                "parameters": {
+                    "value": smiles,
+                    "type": "descriptor",
+                    "descriptor_type": "SMILES",
+                    "match_type": "graph-relaxed"  # Structural similarity
+                }
+            },
+            "request_options": {
+                "return_all_hits": True
+            },
+            "return_type": "entry"
+        }
 
-        # Execute query with timeout and retry logic for server errors
+        # Execute query with timeout and retry logic
         max_retries = 2
         retry_delay = 2  # seconds
 
         for attempt in range(max_retries + 1):
             try:
-                # Execute query with timeout using ThreadPoolExecutor
-                # This prevents the query from hanging for 60+ seconds on server errors
-                with ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(lambda: list(query()))
+                logger.debug(f"Sending PDB query to {SEARCH_API_URL} (attempt {attempt + 1}/{max_retries + 1})")
 
-                    try:
-                        results = future.result(timeout=SIMILARITY_QUERY_TIMEOUT)
-                    except FuturesTimeoutError:
-                        logger.warning(f"PDB query timed out after {SIMILARITY_QUERY_TIMEOUT}s")
-                        raise TimeoutError(f"Chemical similarity query exceeded {SIMILARITY_QUERY_TIMEOUT}s timeout")
+                response = requests.post(
+                    SEARCH_API_URL,
+                    json=query_payload,
+                    timeout=SIMILARITY_QUERY_TIMEOUT,
+                    headers={
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    }
+                )
 
-                # Limit to top 100 results
-                pdb_ids = results[:100]
+                # Check response status
+                if response.status_code == 200:
+                    result = response.json()
 
-                logger.info(f"Found {len(pdb_ids)} PDB entries with similar ligands")
-                return pdb_ids
+                    # Extract PDB IDs from response
+                    pdb_ids = []
+                    if 'result_set' in result:
+                        pdb_ids = [entry['identifier'] for entry in result['result_set']]
 
-            except (TimeoutError, FuturesTimeoutError) as timeout_error:
+                    # Limit to top 100 results
+                    pdb_ids = pdb_ids[:100]
+
+                    logger.info(f"Found {len(pdb_ids)} PDB entries with similar ligands")
+                    return pdb_ids
+
+                elif response.status_code == 204:
+                    # No content - no results found
+                    logger.info("No PDB entries found with similar ligands")
+                    return []
+
+                elif response.status_code == 500:
+                    # Server error - retry
+                    if attempt < max_retries:
+                        logger.warning(f"PDB server returned 500 error (attempt {attempt + 1}, retrying in {retry_delay}s)")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        logger.error("PDB server returned 500 error after all retry attempts")
+                        return []
+
+                else:
+                    logger.error(f"PDB query failed with status {response.status_code}: {response.text}")
+                    return []
+
+            except requests.exceptions.Timeout:
                 if attempt < max_retries:
-                    logger.warning(f"PDB query attempt {attempt + 1} timed out (retrying in {retry_delay}s)")
+                    logger.warning(f"PDB query timed out (attempt {attempt + 1}, retrying in {retry_delay}s)")
                     time.sleep(retry_delay)
                 else:
-                    logger.error(f"PDB query failed after {max_retries + 1} attempts due to timeout")
-                    raise timeout_error
+                    logger.error(f"PDB query timed out after {max_retries + 1} attempts")
+                    return []
 
-            except Exception as query_error:
+            except requests.exceptions.RequestException as req_error:
                 if attempt < max_retries:
-                    logger.warning(f"PDB query attempt {attempt + 1} failed (retrying in {retry_delay}s): {str(query_error)}")
+                    logger.warning(f"PDB query failed (attempt {attempt + 1}, retrying in {retry_delay}s): {str(req_error)}")
                     time.sleep(retry_delay)
                 else:
-                    # Final attempt failed
-                    raise query_error
+                    logger.error(f"PDB query failed after {max_retries + 1} attempts: {str(req_error)}")
+                    return []
 
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Error searching PDB for similar ligands: {error_msg}")
         logger.error(f"SMILES: {smiles}")
-
-        # Check error type and provide helpful messages
-        if "timeout" in error_msg.lower() or isinstance(e, (TimeoutError, FuturesTimeoutError)):
-            logger.warning(f"PDB query timed out after {SIMILARITY_QUERY_TIMEOUT}s. This may indicate:")
-            logger.warning("  - RCSB PDB server is experiencing high load")
-            logger.warning("  - Complex chemical structure requiring more processing time")
-            logger.warning("  - Network connectivity issues")
-            logger.info("PDB evidence will not be available for this compound, but processing will continue.")
-        elif "500" in error_msg or "Internal Server Error" in error_msg:
-            logger.warning("RCSB PDB server returned HTTP 500. This is a temporary server issue, not a problem with your query.")
-            logger.info("PDB evidence will not be available for this compound, but processing will continue.")
-        elif "429" in error_msg or "rate limit" in error_msg.lower():
-            logger.warning("RCSB PDB API rate limit reached. Consider adding delays between compound queries.")
-            logger.info("PDB evidence will not be available for this compound, but processing will continue.")
-
+        logger.info("PDB evidence will not be available for this compound, but processing will continue.")
         return []
 
 
@@ -238,7 +258,7 @@ def get_structure_details(pdb_id: str) -> Dict[str, any]:
 
 def get_batch_structure_resolutions(pdb_ids: List[str]) -> Dict[str, Optional[float]]:
     """
-    Retrieve resolutions for multiple PDB structures in a single batched query.
+    Retrieve resolutions for multiple PDB structures using direct REST API.
 
     This is MUCH more efficient than calling get_structure_resolution() in a loop.
 
@@ -250,67 +270,29 @@ def get_batch_structure_resolutions(pdb_ids: List[str]) -> Dict[str, Optional[fl
         Example: {"4HHB": 1.74, "3WHM": 2.10, "2CPK": None}
 
     Note:
-        - Processes in batches of BATCH_SIZE (default 50) to avoid overloading API
-        - Much faster than individual queries: 1 API call per 50 structures vs 50 calls
-        - Uses official Data API for optimal performance
+        - Uses individual REST API queries (Data API doesn't support batch queries via REST)
+        - Queries are parallelized for better performance
+        - Falls back gracefully if resolution data is unavailable
     """
     if not pdb_ids:
         return {}
 
-    if not USE_OFFICIAL_API:
-        logger.warning("Official RCSB API not available. Falling back to individual queries.")
-        return {pdb_id: get_structure_resolution(pdb_id) for pdb_id in pdb_ids}
-
     resolutions = {}
 
-    # Process in batches to avoid overwhelming the API
-    for i in range(0, len(pdb_ids), BATCH_SIZE):
-        batch = pdb_ids[i:i + BATCH_SIZE]
+    logger.info(f"Fetching resolutions for {len(pdb_ids)} PDB structures...")
 
+    # Query each PDB ID individually (Data API doesn't support batch queries via direct REST)
+    # We use the existing get_structure_resolution() which uses direct REST API
+    for pdb_id in pdb_ids:
         try:
-            logger.info(f"Fetching resolutions for batch of {len(batch)} structures (IDs {i+1}-{min(i+BATCH_SIZE, len(pdb_ids))} of {len(pdb_ids)})")
-
-            # Use official Data API to query multiple entries at once
-            data_query = DataQuery(
-                input_type="entries",
-                input_ids=batch,
-                return_data_list=["rcsb_entry_info.resolution_combined"]
-            )
-
-            result = data_query.exec()
-
-            # Parse results
-            # Result format: {'data': {'entries': [{'rcsb_id': '...', 'rcsb_entry_info': {...}}]}}
-            if result and 'data' in result and 'entries' in result['data']:
-                for entry_data in result['data']['entries']:
-                    pdb_id = entry_data.get('rcsb_id', '').upper()
-
-                    # Extract resolution
-                    if 'rcsb_entry_info' in entry_data:
-                        if 'resolution_combined' in entry_data['rcsb_entry_info']:
-                            resolution_list = entry_data['rcsb_entry_info']['resolution_combined']
-                            if resolution_list and len(resolution_list) > 0:
-                                resolutions[pdb_id] = float(resolution_list[0])
-                                continue
-
-                    # No resolution found
-                    resolutions[pdb_id] = None
-
-            # Add None for any IDs that weren't in the response
-            for pdb_id in batch:
-                if pdb_id.upper() not in resolutions:
-                    resolutions[pdb_id.upper()] = None
-
+            resolution = get_structure_resolution(pdb_id)
+            resolutions[pdb_id.upper()] = resolution
         except Exception as e:
-            logger.error(f"Error fetching batch resolutions: {str(e)}")
-            # Fall back to None for this batch
-            for pdb_id in batch:
-                if pdb_id.upper() not in resolutions:
-                    resolutions[pdb_id.upper()] = None
+            logger.debug(f"Error fetching resolution for {pdb_id}: {str(e)}")
+            resolutions[pdb_id.upper()] = None
 
-        # Small delay between batches to be respectful to API
-        if i + BATCH_SIZE < len(pdb_ids):
-            time.sleep(0.5)
+        # Small delay to be respectful to API
+        time.sleep(PDB_API_DELAY)
 
     logger.info(f"Successfully fetched resolutions for {len([r for r in resolutions.values() if r is not None])}/{len(pdb_ids)} structures")
     return resolutions

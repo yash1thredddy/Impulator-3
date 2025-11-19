@@ -98,11 +98,11 @@ def inchi_to_smiles(inchi: str) -> Optional[str]:
 
 def delete_compound(compound_name: str) -> bool:
     """
-    Delete a compound and all its associated files and folders.
-    
+    Delete a compound and all its associated files and folders from both local and Azure storage.
+
     Args:
         compound_name: Name of the compound to delete
-    
+
     Returns:
         bool: True if deletion was successful, False otherwise
     """
@@ -110,24 +110,51 @@ def delete_compound(compound_name: str) -> bool:
         import os
         import shutil
         from config import RESULTS_DIR
+        from modules.azure_storage import get_azure_storage
+        from modules.metadata_manager import delete_metadata_from_azure, delete_metadata_from_local
         import logging
-        
+
         logger = logging.getLogger(__name__)
-        
-        # Get the full path to the compound folder
+
+        local_success = True
+        azure_success = True
+        metadata_success = True
+
+        # Delete from local storage
         compound_folder = os.path.join(RESULTS_DIR, compound_name)
-        
-        # Check if the folder exists
-        if not os.path.exists(compound_folder):
-            logger.warning(f"Compound folder not found: {compound_folder}")
-            return False
-            
-        # Use shutil.rmtree to delete the directory and all its contents
-        shutil.rmtree(compound_folder)
-        
-        logger.info(f"Successfully deleted compound: {compound_name}")
-        return True
-    
+        if os.path.exists(compound_folder):
+            shutil.rmtree(compound_folder)
+            logger.info(f"Successfully deleted local compound: {compound_name}")
+        else:
+            logger.info(f"No local folder found for {compound_name}")
+
+        # Delete from Azure Blob Storage
+        azure_storage = get_azure_storage()
+        if azure_storage.enabled:
+            azure_success = azure_storage.delete_compound(compound_name)
+            if not azure_success:
+                logger.warning(f"Failed to delete {compound_name} from Azure")
+
+        # Delete metadata from Azure
+        delete_metadata_from_azure(compound_name)
+
+        # Delete metadata from local CSV
+        delete_metadata_from_local(compound_name)
+
+        # Clear the cache for this compound
+        try:
+            import streamlit as st
+            from modules.data_processor import get_compound_folder
+            from modules.metadata_manager import get_all_compounds_metadata
+            # Clear the cached compound folder
+            get_compound_folder.clear()
+            # Clear the cached metadata
+            get_all_compounds_metadata.clear()
+        except:
+            pass  # Ignore cache clear errors
+
+        return local_success and azure_success
+
     except Exception as e:
         logger.error(f"Error deleting compound {compound_name}: {str(e)}")
         return False
@@ -291,19 +318,34 @@ def validate_csv_file(uploaded_file) -> Tuple[bool, Optional[pd.DataFrame]]:
 
 def get_available_compounds() -> List[str]:
     """
-    Get list of available processed compounds.
-    
+    Get list of available processed compounds from both local storage and Azure.
+
     Returns:
         List[str]: List of compound names
     """
     try:
-        if not os.path.exists(RESULTS_DIR):
-            return []
-            
-        compounds = sorted([d for d in os.listdir(RESULTS_DIR) 
-                          if os.path.isdir(os.path.join(RESULTS_DIR, d))])
-        logger.info(f"Found compounds: {compounds}")
-        return compounds
+        from modules.azure_storage import get_azure_storage
+
+        compounds = set()
+
+        # Get compounds from local storage
+        if os.path.exists(RESULTS_DIR):
+            local_compounds = [d for d in os.listdir(RESULTS_DIR)
+                             if os.path.isdir(os.path.join(RESULTS_DIR, d))]
+            compounds.update(local_compounds)
+            logger.info(f"Found {len(local_compounds)} local compounds")
+
+        # Get compounds from Azure Blob Storage
+        azure_storage = get_azure_storage()
+        if azure_storage.enabled:
+            azure_compounds = azure_storage.list_compounds()
+            compounds.update(azure_compounds)
+            logger.info(f"Found {len(azure_compounds)} compounds in Azure")
+
+        result = sorted(list(compounds))
+        logger.info(f"Total available compounds: {len(result)}")
+        return result
+
     except Exception as e:
         logger.error(f"Error getting available compounds: {str(e)}")
         return []
