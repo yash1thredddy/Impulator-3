@@ -42,12 +42,12 @@ def generate_3d_coordinates(smiles: str, optimize: bool = True) -> Optional[Chem
         if optimize:
             try:
                 AllChem.MMFFOptimizeMolecule(mol_3d)
-            except:
-                logger.warning(f"MMFF optimization failed for {smiles}, trying UFF")
+            except Exception as e:
+                logger.warning(f"MMFF optimization failed for {smiles}: {e}, trying UFF")
                 try:
                     AllChem.UFFOptimizeMolecule(mol_3d)
-                except:
-                    logger.warning(f"UFF optimization failed for {smiles}, using unoptimized coordinates")
+                except Exception as e2:
+                    logger.warning(f"UFF optimization failed for {smiles}: {e2}, using unoptimized coordinates")
         
         return mol_3d
     except Exception as e:

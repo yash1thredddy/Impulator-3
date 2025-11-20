@@ -65,6 +65,18 @@ def reset_processing_state():
     st.session_state.error_state = None
     st.session_state.processing_progress = 0
 
+    # Clear processing UI flags
+    if 'show_view_results' in st.session_state:
+        st.session_state.show_view_results = False
+    if 'show_batch_complete' in st.session_state:
+        st.session_state.show_batch_complete = False
+
+    # Clear pending compound data
+    for key in ['pending_compound_name', 'pending_structure_input', 'pending_input_format',
+                'pending_similarity_threshold', 'pending_activity_types']:
+        if key in st.session_state:
+            del st.session_state[key]
+
 def display_home_view():
     """Display the home/landing page with compound search and listing (using lightweight metadata)."""
     from modules.metadata_manager import get_all_compounds_metadata
@@ -257,7 +269,6 @@ def display_delete_confirmation():
                 if success:
                     st.session_state.deletion_success = True
                     st.session_state.show_delete_confirmation = False
-                    st.session_state.current_view = "home"
                     st.success(f"✅ {st.session_state.selected_compound} has been deleted successfully.")
                     st.session_state.selected_compound = None
 
@@ -268,6 +279,10 @@ def display_delete_confirmation():
                         del st.session_state.last_processed_compound
                     if 'show_new_compound_alert' in st.session_state:
                         st.session_state.show_new_compound_alert = False
+
+                    # Clear any processing-related flags when navigating away
+                    reset_processing_state()
+                    st.session_state.current_view = "home"
                 else:
                     st.error(f"Failed to delete {st.session_state.selected_compound}. Please try again.")
                 
@@ -286,6 +301,8 @@ def display_compound_details_view():
     col1, col2, col3 = st.columns([1, 4, 1])
     with col1:
         if st.button("← Back", key="back_to_home"):
+            # Clear any processing-related flags when navigating away
+            reset_processing_state()
             st.session_state.current_view = "home"
             st.rerun()
 
@@ -933,6 +950,8 @@ def display_analyze_view():
     col1, col2 = st.columns([1, 5])
     with col1:
         if st.button("← Back", key="back_to_home_from_analyze"):
+            # Clear any processing-related flags when navigating away
+            reset_processing_state()
             st.session_state.current_view = "home"
             st.rerun()
     
@@ -1102,9 +1121,6 @@ def display_analyze_view():
                             activity_types=pending_activities
                         )
 
-                    # Release lock
-                    st.session_state.is_processing = False
-
                     if process_result:
                         # Store the processed compound for viewing
                         st.session_state.last_processed_compound = validated_name
@@ -1115,11 +1131,13 @@ def display_analyze_view():
                         st.session_state.show_view_results = False
                         st.error(f"❌ Failed to process {validated_name}. Please check the logs for details.")
                 except Exception as e:
-                    # Release lock on error and clear success flag
-                    st.session_state.is_processing = False
+                    # Clear success flag on error
                     st.session_state.show_view_results = False
                     st.error(f"❌ Error during processing: {str(e)}")
                     logger.error(f"Processing error: {e}", exc_info=True)
+                finally:
+                    # ALWAYS release lock, even if exception occurs
+                    st.session_state.is_processing = False
             return  # Stop here to show duplicate form
 
         if st.button("Process Compound", key="process_single_compound", type="primary", disabled=button_disabled):
@@ -1215,9 +1233,6 @@ def display_analyze_view():
                                 activity_types=selected_activities
                             )
 
-                        # Release lock BEFORE showing success message
-                        st.session_state.is_processing = False
-
                         # Store batch results and trigger view
                         st.session_state.batch_success_count = success
                         st.session_state.batch_fail_count = fail
@@ -1225,11 +1240,13 @@ def display_analyze_view():
                         st.rerun()
 
                     except Exception as e:
-                        # Release lock on error and clear completion flag
-                        st.session_state.is_processing = False
+                        # Clear completion flag on error
                         st.session_state.show_batch_complete = False
                         st.error(f"❌ Error during batch processing: {str(e)}")
                         logger.error(f"Batch processing error: {e}", exc_info=True)
+                    finally:
+                        # ALWAYS release lock, even if exception occurs
+                        st.session_state.is_processing = False
 
                 # Show batch completion message and button if just completed
                 if st.session_state.get('show_batch_complete', False):
@@ -1281,12 +1298,14 @@ def main():
                 display_compound_details_view()
             else:
                 st.error("No compound selected. Returning to home.")
+                reset_processing_state()
                 st.session_state.current_view = "home"
                 st.rerun()
         elif st.session_state.current_view == "analyze":
             display_analyze_view()
         else:
             st.error(f"Unknown view: {st.session_state.current_view}")
+            reset_processing_state()
             st.session_state.current_view = "home"
             st.rerun()
     

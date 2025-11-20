@@ -287,7 +287,7 @@ def load_local_metadata() -> Optional[pd.DataFrame]:
                     # Try with latin1 encoding as fallback
                     try:
                         metadata_df = pd.read_csv(metadata_csv_path, encoding='latin1')
-                    except:
+                    except UnicodeDecodeError:
                         # Try with cp1252 (Windows encoding)
                         metadata_df = pd.read_csv(metadata_csv_path, encoding='cp1252')
 
@@ -299,8 +299,8 @@ def load_local_metadata() -> Optional[pd.DataFrame]:
                 try:
                     os.remove(metadata_csv_path)
                     logger.info("Deleted corrupt metadata CSV")
-                except:
-                    pass
+                except (OSError, PermissionError) as delete_error:
+                    logger.warning(f"Could not delete corrupt metadata CSV: {delete_error}")
 
         # Fallback: scan folders (slower but rebuilds metadata)
         metadata_list = []

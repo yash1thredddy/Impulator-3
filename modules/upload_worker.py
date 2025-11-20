@@ -75,8 +75,8 @@ class UploadWorker:
                 # Wait for upload task (timeout to check if still running)
                 try:
                     task = self.queue.get(timeout=1.0)
-                except:
-                    # Timeout, continue checking if still running
+                except Exception:
+                    # Timeout or queue error, continue checking if still running
                     continue
 
                 compound_name = task['compound_name']
@@ -146,8 +146,8 @@ class UploadWorker:
                 try:
                     from modules.metadata_manager import get_all_compounds_metadata
                     get_all_compounds_metadata.clear()
-                except:
-                    pass
+                except Exception as e:
+                    logger.warning(f"Failed to clear metadata cache: {e}")
 
                 # Clean up local files (save ephemeral storage space)
                 logger.info(f"Cleaning up local folder for {compound_name}...")
@@ -166,8 +166,8 @@ class UploadWorker:
             try:
                 from modules.metadata_manager import save_metadata_to_local
                 save_metadata_to_local(metadata)
-            except:
-                pass
+            except Exception as fallback_error:
+                logger.error(f"Failed to save metadata locally as fallback: {fallback_error}")
             return False
 
 

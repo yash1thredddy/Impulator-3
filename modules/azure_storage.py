@@ -193,8 +193,9 @@ class AzureStorageManager:
             logger.info(f"Azure Storage disabled - skipping upload for {compound_name}")
             return False
 
+        temp_zip = None
         try:
-            # Create temporary ZIP file
+            # Create temporary ZIP file path
             temp_zip = os.path.join(tempfile.gettempdir(), f"{compound_name}.zip")
 
             # ZIP the folder
@@ -209,15 +210,18 @@ class AzureStorageManager:
                 blob_client.upload_blob(data, overwrite=True)
 
             logger.info(f"✅ Uploaded {compound_name} to Azure Blob Storage")
-
-            # Clean up temp ZIP
-            os.remove(temp_zip)
-
             return True
 
         except Exception as e:
             logger.error(f"Failed to upload {compound_name} to Azure: {e}")
             return False
+        finally:
+            # Clean up temp ZIP
+            if temp_zip and os.path.exists(temp_zip):
+                try:
+                    os.remove(temp_zip)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to remove temp file {temp_zip}: {cleanup_error}")
 
     def download_compound_zip(self, compound_name: str, extract_to: str) -> bool:
         """
@@ -234,6 +238,7 @@ class AzureStorageManager:
             logger.info(f"Azure Storage disabled - skipping download for {compound_name}")
             return False
 
+        temp_zip = None
         try:
             blob_name = f"{compound_name}.zip"
             blob_client = self.container_client.get_blob_client(blob_name)
@@ -248,15 +253,18 @@ class AzureStorageManager:
 
             # Extract ZIP
             success = self._extract_zip_to_folder(temp_zip, extract_to)
-
-            # Clean up temp ZIP
-            os.remove(temp_zip)
-
             return success
 
         except Exception as e:
             logger.error(f"Failed to download {compound_name} from Azure: {e}")
             return False
+        finally:
+            # Clean up temp ZIP
+            if temp_zip and os.path.exists(temp_zip):
+                try:
+                    os.remove(temp_zip)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to remove temp file {temp_zip}: {cleanup_error}")
 
     def list_compounds(self) -> List[str]:
         """
