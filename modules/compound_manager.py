@@ -90,28 +90,38 @@ def check_existing_compound(
             if confirm:
                 if action:
                     st.session_state.compound_action = action
-                    st.session_state.confirm_choice = True  
-                    st.session_state.processing_triggered = False  
+                    st.session_state.confirm_choice = True
+                    st.session_state.processing_triggered = False
                     st.success("✔ Selection confirmed. Processing will proceed.")
-                    st.experimental_rerun()  
+                    st.rerun()
                 else:
                     st.error("Please select an option before confirming.")
 
         # Proceed with processing only after confirmation
         if st.session_state.confirm_choice and not st.session_state.processing_triggered:
-            st.session_state.processing_triggered = True  
+            st.session_state.processing_triggered = True
 
             if st.session_state.compound_action == "✏️ Enter a new compound name":
                 new_compound_name = st.session_state.new_compound_name
                 if new_compound_name:
                     if validate_compound_name(new_compound_name):
                         st.success(f"✔ Processing with new name: **'{new_compound_name}'**")
+                        # Clear flags before returning
+                        st.session_state.confirm_choice = False
+                        st.session_state.processing_triggered = False
+                        st.session_state.compound_action = None
                         return new_compound_name
                     else:
                         st.error("Invalid compound name. Please use alphanumeric characters.")
+                        # Clear flags on error
+                        st.session_state.confirm_choice = False
+                        st.session_state.processing_triggered = False
                         return None
                 else:
                     st.error("Please enter a new compound name before confirming.")
+                    # Clear flags on error
+                    st.session_state.confirm_choice = False
+                    st.session_state.processing_triggered = False
                     return None
 
             elif st.session_state.compound_action == "❌ Replace existing compound":
@@ -119,6 +129,10 @@ def check_existing_compound(
                 from modules.utils import delete_compound
                 delete_compound(compound_name)
                 st.success(f"✅ Replacing compound **'{compound_name}'** with new parameters.")
+                # Clear flags before returning
+                st.session_state.confirm_choice = False
+                st.session_state.processing_triggered = False
+                st.session_state.compound_action = None
                 return compound_name
 
         return None
@@ -791,6 +805,135 @@ def display_compound_summary(
                 })
                 st.dataframe(class_df)
 
+        # Assay Interference Flags (Option B: Display only, no score penalty)
+        assay_flag_cols = ['PAINS_Violation', 'Aggregator_Risk', 'Redox_Reactive',
+                          'Fluorescence_Interference', 'Thiol_Reactive',
+                          'Num_Assay_Flags', 'Assay_Quality_Score']
+
+        if any(col in df_results.columns for col in assay_flag_cols):
+            st.markdown("---")
+            st.markdown("##### ⚠️ Assay Interference Flags")
+            st.markdown("*Potential interference mechanisms detected (displayed for awareness, does NOT affect O[Q/P/L]A score)*")
+
+            # Get unique compounds for accurate counting
+            unique_compounds = df_results[['ChEMBL_ID'] + [col for col in assay_flag_cols if col in df_results.columns]].drop_duplicates(subset=['ChEMBL_ID'])
+            total_unique = len(unique_compounds)
+
+            # Summary metrics (based on unique compounds)
+            col1, col2, col3, col4, col5 = st.columns(5)
+
+            with col1:
+                if 'PAINS_Violation' in unique_compounds.columns:
+                    pains_count = unique_compounds['PAINS_Violation'].sum()
+                    pct = (pains_count / total_unique * 100) if total_unique > 0 else 0
+                    st.metric("PAINS", f"{int(pains_count)} ({pct:.1f}%)",
+                             help="Pan-Assay Interference Substructures")
+
+            with col2:
+                if 'Aggregator_Risk' in unique_compounds.columns:
+                    agg_count = unique_compounds['Aggregator_Risk'].sum()
+                    pct = (agg_count / total_unique * 100) if total_unique > 0 else 0
+                    st.metric("Aggregators", f"{int(agg_count)} ({pct:.1f}%)",
+                             help="Colloidal aggregation risk")
+
+            with col3:
+                if 'Redox_Reactive' in unique_compounds.columns:
+                    redox_count = unique_compounds['Redox_Reactive'].sum()
+                    pct = (redox_count / total_unique * 100) if total_unique > 0 else 0
+                    st.metric("Redox Active", f"{int(redox_count)} ({pct:.1f}%)",
+                             help="Redox-reactive groups (catechols, quinones)")
+
+            with col4:
+                if 'Fluorescence_Interference' in unique_compounds.columns:
+                    fluor_count = unique_compounds['Fluorescence_Interference'].sum()
+                    pct = (fluor_count / total_unique * 100) if total_unique > 0 else 0
+                    st.metric("Fluorescent", f"{int(fluor_count)} ({pct:.1f}%)",
+                             help="Autofluorescent compounds")
+
+            with col5:
+                if 'Thiol_Reactive' in unique_compounds.columns:
+                    thiol_count = unique_compounds['Thiol_Reactive'].sum()
+                    pct = (thiol_count / total_unique * 100) if total_unique > 0 else 0
+                    st.metric("Thiol Reactive", f"{int(thiol_count)} ({pct:.1f}%)",
+                             help="Cysteine-reactive electrophiles")
+
+            st.caption(f"📊 Statistics based on **{total_unique} unique compounds** (not individual bioactivities)")
+
+            # Assay Quality Score distribution
+            if 'Assay_Quality_Score' in unique_compounds.columns:
+                st.markdown("**Assay Quality Score Distribution:**")
+                avg_quality = unique_compounds['Assay_Quality_Score'].mean()
+
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    st.metric("Average Assay Quality", f"{avg_quality:.3f}",
+                             help="Score: 1.0 (no flags) to 0.0 (all 5 flags)")
+
+                    # Count unique compounds by number of flags
+                    if 'Num_Assay_Flags' in unique_compounds.columns:
+                        flag_dist = unique_compounds['Num_Assay_Flags'].value_counts().sort_index()
+                        st.markdown("**Flag Distribution:**")
+                        for num_flags, count in flag_dist.items():
+                            pct = (count / total_unique * 100)
+                            st.write(f"- {int(count)} compound(s) with {int(num_flags)} flag(s) ({pct:.1f}%)")
+
+                with col2:
+                    # Show unique compounds with interference flags
+                    if 'Num_Assay_Flags' in df_results.columns:
+                        flagged = df_results[df_results['Num_Assay_Flags'] > 0].copy()
+
+                        if not flagged.empty:
+                            st.markdown("**Unique Compounds with Interference Flags:**")
+
+                            # Get unique compounds only (drop duplicates by ChEMBL_ID)
+                            display_cols = ['ChEMBL_ID', 'Molecule_Name', 'Num_Assay_Flags', 'Assay_Quality_Score']
+                            if 'PAINS_Violation' in flagged.columns:
+                                display_cols.append('PAINS_Violation')
+                            if 'Redox_Reactive' in flagged.columns:
+                                display_cols.append('Redox_Reactive')
+                            if 'Fluorescence_Interference' in flagged.columns:
+                                display_cols.append('Fluorescence_Interference')
+                            if 'Aggregator_Risk' in flagged.columns:
+                                display_cols.append('Aggregator_Risk')
+                            if 'Thiol_Reactive' in flagged.columns:
+                                display_cols.append('Thiol_Reactive')
+
+                            avail_cols = [col for col in display_cols if col in flagged.columns]
+
+                            # Drop duplicates to show only unique compounds
+                            unique_flagged = flagged[avail_cols].drop_duplicates(subset=['ChEMBL_ID']).reset_index(drop=True)
+
+                            # Sort by number of flags (descending), then by ChEMBL_ID
+                            unique_flagged = unique_flagged.sort_values(
+                                by=['Num_Assay_Flags', 'ChEMBL_ID'],
+                                ascending=[False, True]
+                            )
+
+                            # Show top 10 unique compounds
+                            top_flagged = unique_flagged.head(10)
+                            st.dataframe(top_flagged, hide_index=True)
+
+                            # Show count
+                            total_unique = len(unique_flagged)
+                            if total_unique > 10:
+                                st.caption(f"📊 Showing top 10 of **{total_unique} unique compounds** with interference flags")
+                            else:
+                                st.caption(f"📊 **{total_unique} unique compound(s)** with interference flags")
+                        else:
+                            st.success("✅ No interference flags detected for any compounds!")
+
+            # Important note about PDB evidence
+            st.info("""
+            **💡 Important Note:** These flags identify compounds with known assay interference mechanisms
+            (PAINS, aggregation, redox activity, fluorescence, thiol reactivity). However, flags do **NOT**
+            automatically disqualify compounds. Many flagged compounds (e.g., quercetin with catechol groups)
+            exhibit genuine polypharmacology validated by extensive PDB structural evidence.
+
+            **Interpretation:** Use PDB scores and structural evidence to distinguish genuine multi-target
+            binders from assay artifacts. High O[Q/P/L]A scores + interference flags + high PDB scores =
+            likely genuine polypharmacology.
+            """)
+
         # PDB Structural Evidence (Component 4) - Load from separate PDB summary file
         if 'PDB_Score' in df_results.columns:
             # Resolve compound folder from local or Azure storage
@@ -895,11 +1038,18 @@ def display_compound_summary(
                                                                       if col not in ['PDB_Link', 'PDB_ID', 'URL', 'SMILES']]
                                     display_df = display_df[cols_to_display]
 
-                                # Display the dataframe with HTML links
-                                st.markdown(display_df.to_html(escape=False, index=False), unsafe_allow_html=True)
+                                # Display the dataframe in a scrollable container
+                                st.markdown(
+                                    f"""
+                                    <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; border-radius: 5px; padding: 10px;">
+                                        {display_df.to_html(escape=False, index=False)}
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
 
                                 st.caption(f"📊 **{len(pdb_details_df)} total PDB structures** sorted by quality (⭐⭐⭐ → ⭐⭐ → ⭐) "
-                                         "and resolution (best first). Click PDB_Link to view structure at RCSB PDB.")
+                                         "and resolution (best first). Click PDB_Link to view structure at RCSB PDB. ↕️ Scroll to see all.")
 
                             except Exception as e:
                                 logger.error(f"Error loading detailed PDB structures: {str(e)}")

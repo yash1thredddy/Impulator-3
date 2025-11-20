@@ -32,7 +32,8 @@ def validate_smiles(smiles: str) -> bool:
     try:
         mol = Chem.MolFromSmiles(smiles)
         return mol is not None
-    except:
+    except Exception as e:
+        logger.debug(f"Invalid SMILES string: {e}")
         return False
 
 def validate_inchi(inchi: str) -> bool:
@@ -55,7 +56,8 @@ def validate_inchi(inchi: str) -> bool:
     try:
         mol = Chem.MolFromInchi(inchi)
         return mol is not None
-    except:
+    except Exception as e:
+        logger.debug(f"Invalid InChI string: {e}")
         return False
 
 def inchi_to_smiles(inchi: str) -> Optional[str]:
@@ -150,8 +152,9 @@ def delete_compound(compound_name: str) -> bool:
             get_compound_folder.clear()
             # Clear the cached metadata
             get_all_compounds_metadata.clear()
-        except:
-            pass  # Ignore cache clear errors
+        except Exception as e:
+            logger.warning(f"Failed to clear cache after deletion: {e}")
+            # Continue - cache errors shouldn't fail deletion
 
         return local_success and azure_success
 
