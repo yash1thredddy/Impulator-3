@@ -23,7 +23,7 @@ References:
 """
 
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from rdkit import Chem
 from rdkit.Chem import FilterCatalog, rdMolDescriptors, Descriptors
 
@@ -446,7 +446,7 @@ def calculate_assay_quality_score(flags_dict: Dict[str, bool]) -> float:
     return assay_quality_score
 
 
-def get_detailed_interference_report(smiles: str) -> Dict[str, any]:
+def get_detailed_interference_report(smiles: str) -> Dict[str, Any]:
     """
     Generate a detailed report of all interference mechanisms for a compound.
 
