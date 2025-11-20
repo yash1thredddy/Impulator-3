@@ -99,19 +99,29 @@ def check_existing_compound(
 
         # Proceed with processing only after confirmation
         if st.session_state.confirm_choice and not st.session_state.processing_triggered:
-            st.session_state.processing_triggered = True  
+            st.session_state.processing_triggered = True
 
             if st.session_state.compound_action == "✏️ Enter a new compound name":
                 new_compound_name = st.session_state.new_compound_name
                 if new_compound_name:
                     if validate_compound_name(new_compound_name):
                         st.success(f"✔ Processing with new name: **'{new_compound_name}'**")
+                        # Clear flags before returning
+                        st.session_state.confirm_choice = False
+                        st.session_state.processing_triggered = False
+                        st.session_state.compound_action = None
                         return new_compound_name
                     else:
                         st.error("Invalid compound name. Please use alphanumeric characters.")
+                        # Clear flags on error
+                        st.session_state.confirm_choice = False
+                        st.session_state.processing_triggered = False
                         return None
                 else:
                     st.error("Please enter a new compound name before confirming.")
+                    # Clear flags on error
+                    st.session_state.confirm_choice = False
+                    st.session_state.processing_triggered = False
                     return None
 
             elif st.session_state.compound_action == "❌ Replace existing compound":
@@ -119,6 +129,10 @@ def check_existing_compound(
                 from modules.utils import delete_compound
                 delete_compound(compound_name)
                 st.success(f"✅ Replacing compound **'{compound_name}'** with new parameters.")
+                # Clear flags before returning
+                st.session_state.confirm_choice = False
+                st.session_state.processing_triggered = False
+                st.session_state.compound_action = None
                 return compound_name
 
         return None
