@@ -58,6 +58,10 @@ from modules.imp_classifier import (
     get_imp_summary,
     generate_imp_report
 )
+from modules.assay_interference_filter import (
+    get_all_interference_flags,
+    calculate_assay_quality_score
+)
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -162,6 +166,20 @@ def process_single_compound(
         hbd, hba, heavy_atoms = extract_properties(smiles)
         npol = hbd + hba if not (np.isnan(hbd) or np.isnan(hba)) else np.nan
 
+        # Check for assay interference (Option B: display only, no score penalty)
+        if smiles != 'N/A':
+            interference_flags = get_all_interference_flags(smiles)
+            assay_quality_score = calculate_assay_quality_score(interference_flags)
+        else:
+            interference_flags = {
+                'PAINS': False,
+                'Aggregator': False,
+                'Redox': False,
+                'Fluorescence': False,
+                'Thiol_Reactive': False
+            }
+            assay_quality_score = 1.0
+
         # Generate InChIKey and get classification
         inchi_key = None
         if smiles != 'N/A':
@@ -210,6 +228,12 @@ def process_single_compound(
             if all(key in act for key in ['standard_value', 'standard_units', 'standard_type']):
                 if act['standard_value'] and act['standard_units'] == 'nM':
                     value = float(act['standard_value'])
+
+                    # Skip invalid activity values (zero or negative)
+                    if value <= 0:
+                        logger.warning(f"Skipping invalid activity value: {value} nM (must be positive)")
+                        continue
+
                     pActivity = -np.log10(value * 1e-9)
 
                     # Calculate efficiency metrics using new module
@@ -263,7 +287,15 @@ def process_single_compound(
                         'NP_Pathway': np_classification_data.get('NP_Pathway', ''),
                         'NP_Superclass': np_classification_data.get('NP_Superclass', ''),
                         'NP_Class': np_classification_data.get('NP_Class', ''),
-                        'NP_isglycoside': np_classification_data.get('NP_isglycoside', False)
+                        'NP_isglycoside': np_classification_data.get('NP_isglycoside', False),
+                        # Add assay interference flags (Option B: display only)
+                        'PAINS_Violation': interference_flags['PAINS'],
+                        'Aggregator_Risk': interference_flags['Aggregator'],
+                        'Redox_Reactive': interference_flags['Redox'],
+                        'Fluorescence_Interference': interference_flags['Fluorescence'],
+                        'Thiol_Reactive': interference_flags['Thiol_Reactive'],
+                        'Num_Assay_Flags': sum(interference_flags.values()),
+                        'Assay_Quality_Score': assay_quality_score
                     }
 
                     results.append(result_dict)
@@ -299,7 +331,15 @@ def process_single_compound(
                 'NP_Pathway': np_classification_data.get('NP_Pathway', ''),
                 'NP_Superclass': np_classification_data.get('NP_Superclass', ''),
                 'NP_Class': np_classification_data.get('NP_Class', ''),
-                'NP_isglycoside': np_classification_data.get('NP_isglycoside', False)
+                'NP_isglycoside': np_classification_data.get('NP_isglycoside', False),
+                # Add assay interference flags (Option B: display only)
+                'PAINS_Violation': interference_flags['PAINS'],
+                'Aggregator_Risk': interference_flags['Aggregator'],
+                'Redox_Reactive': interference_flags['Redox'],
+                'Fluorescence_Interference': interference_flags['Fluorescence'],
+                'Thiol_Reactive': interference_flags['Thiol_Reactive'],
+                'Num_Assay_Flags': sum(interference_flags.values()),
+                'Assay_Quality_Score': assay_quality_score
             })
 
         return results

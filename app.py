@@ -69,6 +69,12 @@ def display_home_view():
     """Display the home/landing page with compound search and listing (using lightweight metadata)."""
     from modules.metadata_manager import get_all_compounds_metadata
 
+    # Check if processing is in progress - prevent navigation
+    if st.session_state.get('is_processing', False):
+        st.warning("⏳ **Processing in progress... Please wait for completion before navigating.**")
+        st.info("🔒 UI is temporarily locked to prevent data corruption. The page will become interactive once processing completes.")
+        st.stop()
+
     st.markdown("""
     <style>
     .app-title {
@@ -269,6 +275,12 @@ def display_delete_confirmation():
                 
 def display_compound_details_view():
     """Display detailed view for a selected compound."""
+    # Check if processing is in progress - prevent navigation
+    if st.session_state.get('is_processing', False):
+        st.warning("⏳ **Processing in progress... Please wait for completion before navigating.**")
+        st.info("🔒 UI is temporarily locked to prevent data corruption. The page will become interactive once processing completes.")
+        st.stop()
+
     # Navigation controls
     # Add a delete button in the top navigation
     col1, col2, col3 = st.columns([1, 4, 1])
@@ -929,7 +941,18 @@ def display_analyze_view():
     
     # Input method selection - keep the original horizontal radio buttons
     st.subheader("Input Method")
-    input_method = st.radio("Input Method", ["Manual", "CSV Upload"], horizontal=True)
+
+    # Disable input method switching during processing to prevent interruption
+    is_currently_processing = st.session_state.get('is_processing', False)
+    if is_currently_processing:
+        st.warning("🔒 **Input method locked during processing to prevent interruption.**")
+
+    input_method = st.radio(
+        "Input Method",
+        ["Manual", "CSV Upload"],
+        horizontal=True,
+        disabled=is_currently_processing
+    )
     
     # Configuration settings - maintain the original layout
     st.subheader("Configuration")
@@ -1010,11 +1033,18 @@ def display_analyze_view():
         # Store the input type for processing
         input_format = input_type.lower()
         
-        if st.button("Process Compound", key="process_single_compound", type="primary"):
+        # Check if already processing
+        if 'is_processing' not in st.session_state:
+            st.session_state.is_processing = False
+
+        # Disable button if processing
+        button_disabled = st.session_state.is_processing
+
+        if st.button("Process Compound", key="process_single_compound", type="primary", disabled=button_disabled):
             if not selected_activities:
                 st.error("Please select at least one activity type to process.")
                 return
-            
+
             # Validate inputs
             if not compound_name.strip():
                 st.error("Please enter a compound name.")
@@ -1026,6 +1056,7 @@ def display_analyze_view():
 
             # Sanitize compound name for filesystem safety
             from modules.utils import sanitize_compound_name
+            from modules.compound_manager import check_existing_compound
             original_name = compound_name.strip()
             sanitized_name = sanitize_compound_name(original_name)
 
@@ -1033,22 +1064,61 @@ def display_analyze_view():
             if original_name != sanitized_name:
                 st.info(f"ℹ️ Compound name sanitized: '{original_name}' → '{sanitized_name}'")
 
-            with st.spinner("Processing compound..."):
-                process_result = process_and_store(
-                    compound_name=sanitized_name,
-                    structure_input=structure_input,
-                    input_format=input_format,
-                    similarity_threshold=similarity_threshold,
-                    activity_types=selected_activities
-                )
+            # Check for duplicates and prompt user if needed
+            validated_name = check_existing_compound(
+                compound_name=sanitized_name,
+                smiles=structure_input,
+                similarity_threshold=similarity_threshold,
+                activity_types=selected_activities
+            )
+
+            # If validation returned None, user cancelled or needs to make a choice
+            if validated_name is None:
+                return
+
+            # Set processing lock
+            st.session_state.is_processing = True
+
+            try:
+                with st.spinner("🔒 Processing compound... UI locked to prevent interruption"):
+                    process_result = process_and_store(
+                        compound_name=validated_name,  # Use validated name (could be different from original)
+                        structure_input=structure_input,
+                        input_format=input_format,
+                        similarity_threshold=similarity_threshold,
+                        activity_types=selected_activities
+                    )
+
+                # Release lock before showing buttons
+                st.session_state.is_processing = False
 
                 if process_result:
-                    st.success(f"Successfully processed {sanitized_name}")
-                    # Offer to navigate to the compound details view
-                    if st.button("View Results", key="view_new_results"):
-                        st.session_state.selected_compound = sanitized_name
-                        st.session_state.current_view = "compound_details"
-                        st.rerun()
+                    st.success(f"✅ Successfully processed {validated_name}")
+                    # Store the processed compound for viewing
+                    st.session_state.last_processed_compound = validated_name
+                    st.session_state.show_view_results = True
+                    st.rerun()
+                else:
+                    st.error(f"❌ Failed to process {validated_name}. Please check the logs for details.")
+            except Exception as e:
+                # Release lock on error
+                st.session_state.is_processing = False
+                st.error(f"❌ Error during processing: {str(e)}")
+                logger.error(f"Processing error: {e}", exc_info=True)
+
+        # Show "View Results" button if processing just completed
+        if st.session_state.get('show_view_results', False) and st.session_state.get('last_processed_compound'):
+            compound = st.session_state.last_processed_compound
+            st.success(f"✅ Successfully processed {compound}")
+            if st.button("View Results", key="view_processed_results"):
+                st.session_state.selected_compound = compound
+                st.session_state.current_view = "compound_details"
+                st.session_state.show_view_results = False
+                st.rerun()
+
+        # Show processing status
+        if st.session_state.is_processing:
+            st.warning("⏳ **Processing in progress... Please do not navigate away or interact with the UI.**")
     
     # CSV upload processing
     elif input_method == "CSV Upload":
@@ -1084,24 +1154,58 @@ def display_analyze_view():
                     st.dataframe(changes_df)
                     st.info("📝 These names will be automatically cleaned to ensure compatibility with file systems.")
 
-                if st.button("Process CSV", key="process_csv_batch", type="primary"):
+                # Check if already processing
+                if 'is_processing' not in st.session_state:
+                    st.session_state.is_processing = False
+
+                # Disable button if processing
+                button_disabled = st.session_state.is_processing
+
+                if st.button("Process CSV", key="process_csv_batch", type="primary", disabled=button_disabled):
                     if not selected_activities:
                         st.error("Please select at least one activity type to process.")
                         return
-                    
-                    with st.spinner("Processing compounds... Please wait."):
-                        success, fail = process_csv_batch(
-                            df=df,
-                            similarity_threshold=similarity_threshold,
-                            activity_types=selected_activities
-                        )
-                        
-                        st.success(f"Processing completed: {success} successful, {fail} failed.")
-                        
-                        # Offer to navigate back to the home view
-                        if st.button("Return to Home", key="back_to_home_after_batch"):
-                            st.session_state.current_view = "home"
-                            st.rerun()
+
+                    # Set processing lock
+                    st.session_state.is_processing = True
+
+                    try:
+                        with st.spinner(f"🔒 Processing {len(df)} compounds... UI locked to prevent interruption"):
+                            success, fail = process_csv_batch(
+                                df=df,
+                                similarity_threshold=similarity_threshold,
+                                activity_types=selected_activities
+                            )
+
+                        # Release lock BEFORE showing success message
+                        st.session_state.is_processing = False
+
+                        # Store batch results and trigger view
+                        st.session_state.batch_success_count = success
+                        st.session_state.batch_fail_count = fail
+                        st.session_state.show_batch_complete = True
+                        st.rerun()
+
+                    except Exception as e:
+                        st.session_state.is_processing = False
+                        st.error(f"❌ Error during batch processing: {str(e)}")
+                        logger.error(f"Batch processing error: {e}", exc_info=True)
+
+                # Show batch completion message and button if just completed
+                if st.session_state.get('show_batch_complete', False):
+                    success = st.session_state.get('batch_success_count', 0)
+                    fail = st.session_state.get('batch_fail_count', 0)
+                    st.success(f"✅ Processing completed: {success} successful, {fail} failed.")
+
+                    if st.button("Return to Home", key="return_home_after_batch"):
+                        st.session_state.current_view = "home"
+                        st.session_state.show_batch_complete = False
+                        st.rerun()
+
+                # Show processing status
+                if st.session_state.is_processing:
+                    st.warning("⏳ **Batch processing in progress... Please do not navigate away or interact with the UI.**")
+                    st.info(f"📊 **Progress**: Processing may take several minutes for large datasets. The button will re-enable when complete.")
 
 
 def main():
