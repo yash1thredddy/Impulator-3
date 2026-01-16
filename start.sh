@@ -1,112 +1,60 @@
 #!/bin/bash
+# IMPULATOR Start Script
+# Starts both FastAPI backend and Streamlit frontend
 
-# IMPULATOR Startup Script
-# Quick start script for local development and production
+set -e
 
-set -e  # Exit on error
+# Configuration
+export API_HOST="${API_HOST:-0.0.0.0}"
+export API_PORT="${API_PORT:-8000}"
+export FRONTEND_PORT="${FRONTEND_PORT:-7860}"
 
-echo "🚀 Starting IMPULATOR..."
-echo "================================"
+echo "=================================================="
+echo "Starting IMPULATOR"
+echo "=================================================="
 
-# Function to check if Docker is installed
-check_docker() {
-    if ! command -v docker &> /dev/null; then
-        echo "❌ Docker is not installed. Please install Docker first."
-        exit 1
+# Function to cleanup on exit
+cleanup() {
+    echo "Shutting down..."
+    kill $BACKEND_PID 2>/dev/null || true
+    kill $FRONTEND_PID 2>/dev/null || true
+    exit 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+# Start backend
+echo "Starting backend on ${API_HOST}:${API_PORT}..."
+python -m uvicorn backend.main:app \
+    --host $API_HOST \
+    --port $API_PORT &
+BACKEND_PID=$!
+
+# Wait for backend to be ready
+echo "Waiting for backend..."
+for i in {1..30}; do
+    if curl -s "http://localhost:${API_PORT}/api/v1/health" > /dev/null 2>&1; then
+        echo "Backend is ready!"
+        break
     fi
-    echo "✅ Docker found"
-}
+    sleep 1
+done
 
-# Function to check if Docker Compose is installed
-check_docker_compose() {
-    if ! command -v docker-compose &> /dev/null; then
-        echo "❌ Docker Compose is not installed. Please install Docker Compose first."
-        exit 1
-    fi
-    echo "✅ Docker Compose found"
-}
+# Start frontend
+echo "Starting frontend on port ${FRONTEND_PORT}..."
+python -m streamlit run frontend/app.py \
+    --server.port $FRONTEND_PORT \
+    --server.address 0.0.0.0 \
+    --server.headless true \
+    --browser.gatherUsageStats false &
+FRONTEND_PID=$!
 
-# Function to start with Docker
-start_docker() {
-    echo ""
-    echo "📦 Starting with Docker Compose..."
-    check_docker
-    check_docker_compose
+echo "=================================================="
+echo "IMPULATOR is running!"
+echo "  Frontend: http://localhost:${FRONTEND_PORT}"
+echo "  Backend:  http://localhost:${API_PORT}"
+echo "  API Docs: http://localhost:${API_PORT}/docs"
+echo "=================================================="
 
-    # Stop existing containers
-    echo "🛑 Stopping existing containers (if any)..."
-    docker-compose down 2>/dev/null || true
-
-    # Build and start
-    echo "🔨 Building and starting containers..."
-    docker-compose up -d --build
-
-    # Wait for container to be healthy
-    echo "⏳ Waiting for application to start..."
-    sleep 5
-
-    # Check status
-    echo ""
-    echo "📊 Container Status:"
-    docker-compose ps
-
-    echo ""
-    echo "✅ IMPULATOR is running!"
-    echo "🌐 Access the application at: http://localhost:8501"
-    echo ""
-    echo "📝 Useful commands:"
-    echo "   View logs:     docker-compose logs -f"
-    echo "   Stop:          docker-compose down"
-    echo "   Restart:       docker-compose restart"
-}
-
-# Function to start locally without Docker
-start_local() {
-    echo ""
-    echo "💻 Starting locally without Docker..."
-
-    # Check if virtual environment exists
-    if [ ! -d "venv" ] && [ ! -d ".venv" ]; then
-        echo "⚠️  No virtual environment found. Creating one..."
-        python3 -m venv venv
-        source venv/bin/activate
-        echo "📦 Installing dependencies..."
-        pip install --upgrade pip
-        pip install -r requirements.txt
-    else
-        echo "✅ Virtual environment found"
-        # Activate venv or .venv
-        if [ -d "venv" ]; then
-            source venv/bin/activate
-        else
-            source .venv/bin/activate
-        fi
-    fi
-
-    # Create results directory if it doesn't exist
-    mkdir -p analysis_results
-
-    # Start Streamlit
-    echo "🚀 Starting Streamlit server..."
-    streamlit run app.py --server.port=8501 --server.address=localhost
-}
-
-# Main menu
-echo "Select startup mode:"
-echo "1) Docker (recommended for production)"
-echo "2) Local (for development)"
-echo ""
-read -p "Enter choice [1-2]: " choice
-
-case $choice in
-    1)
-        start_docker
-        ;;
-    2)
-        start_local
-        ;;
-    *)
-        echo "❌ Invalid choice. Please run again and select 1 or 2."
-        exit 1
-        ;;
-esac
+# Wait for processes
+wait $BACKEND_PID $FRONTEND_PID

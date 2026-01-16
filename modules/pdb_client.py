@@ -14,13 +14,22 @@ Resolution Quality Classes:
 - * Poor: > 3.0 Å (low confidence)
 """
 
+import json
 import logging
 import requests
 from typing import Dict, List, Optional, Tuple
 from functools import lru_cache
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
-from config import PDB_API_DELAY
+
+# Try relative import first, then absolute
+try:
+    from .config import PDB_API_DELAY
+except ImportError:
+    try:
+        from config import PDB_API_DELAY
+    except ImportError:
+        PDB_API_DELAY = 0.2  # Default value
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +173,10 @@ def search_similar_ligands(
                 else:
                     logger.error(f"PDB query failed after {max_retries + 1} attempts: {str(req_error)}")
                     return []
+
+            except json.JSONDecodeError as json_error:
+                logger.error(f"Invalid JSON response from PDB API: {str(json_error)}")
+                return []
 
     except Exception as e:
         error_msg = str(e)

@@ -1,75 +1,150 @@
 """
-Import all module components for easy access.
+Chemistry modules for IMPULATOR.
+Decoupled from Streamlit for backend use.
 """
+
+# API Client
 from modules.api_client import (
     get_molecule_data,
     get_classification,
     get_chembl_ids,
+    fetch_compound_activities,
     batch_fetch_activities,
-    fetch_compound_activities
+    get_target_name,
+    get_drug_indications,
+    clear_caches,
+    get_cache_info,
 )
 
-from modules.data_processor import (
-    extract_properties,
-    extract_classification_data,
-    process_single_compound,
-    process_compounds_parallel,
-    process_compound,
-    load_results
+# Efficiency Metrics
+from modules.efficiency_metrics import (
+    calculate_sei,
+    calculate_bei,
+    calculate_nsei,
+    calculate_nbei,
+    calculate_all_efficiency_metrics,
+    calculate_efficiency_metrics_dataframe,
 )
 
-# Legacy wrapper for backward compatibility with old code
-def calculate_efficiency_metrics(pActivity, psa, molecular_weight, npol, heavy_atoms):
-    """
-    Backward compatibility wrapper for calculate_efficiency_metrics.
-    In v2, this functionality is in efficiency_metrics module, but data_processor handles it internally.
-    """
-    try:
-        from modules.efficiency_metrics import calculate_all_efficiency_metrics
-        metrics = calculate_all_efficiency_metrics(pActivity, psa, molecular_weight, npol, heavy_atoms)
-        return metrics['SEI'], metrics['BEI'], metrics['NSEI'], metrics['NBEI']
-    except Exception:
-        # Fallback to simple calculation if module not available
-        sei = pActivity / (psa / 100) if psa and psa > 0 else float('nan')
-        bei = pActivity / (molecular_weight / 1000) if molecular_weight and molecular_weight > 0 else float('nan')
-        nsei = pActivity / npol if npol and npol > 0 else float('nan')
-        nbei = pActivity / heavy_atoms if heavy_atoms and heavy_atoms > 0 else float('nan')
-        return sei, bei, nsei, nbei
-
-from modules.utils import (
-    validate_smiles,
-    validate_compound_name,
-    sanitize_compound_name,
-    validate_csv_file,
-    get_available_compounds,
-    zip_results,
-    zip_compound_results,
-    format_smiles_for_display,
-    delete_compound
+# Efficiency Planes
+from modules.efficiency_planes import (
+    calculate_modulus,
+    calculate_angle,
+    calculate_all_plane_metrics,
+    calculate_plane_metrics_dataframe,
+    find_best_in_class,
 )
 
-from modules.visualization import (
-    plot_all_visualizations,
-    plot_efficiency_scatter_plots,
-    plot_activity_visualizations,
-    plot_property_visualizations,
-    generate_molecular_structures,
-    display_interactive_plot,
-    show_interactive_plots,
-    show_molecular_structures
+# Outlier Detection
+from modules.outlier_detection import (
+    detect_efficiency_outliers,
+    calculate_cohort_statistics,
+    get_outlier_summary,
+    calculate_z_scores,
+    filter_outliers,
 )
 
-from modules.compound_manager import (
-    check_existing_compound,
-    process_and_store,
-    process_csv_batch,
-    display_compound_summary
+# O[Q/P/L]A Scoring
+from modules.oqpla_scoring import (
+    calculate_oqpla_phase1,
+    calculate_oqpla_phase2,
+    interpret_oqpla_score,
+    add_oqpla_interpretation,
+    get_oqpla_summary,
+    create_pdb_summary,
+    create_detailed_pdb_summary,
 )
 
-from modules.molecule_viewer import (
-    generate_3d_coordinates,
-    view_molecule_3d,
-    view_molecule_from_smiles,
-    get_molecule_style_controls,
-    molecule_viewer_app
+# Configuration
+from modules.config import (
+    ACTIVITY_TYPES,
+    CACHE_SIZE,
+    MAX_BATCH_SIZE,
+    MAX_WORKERS,
 )
+
+# Assay Interference Filter (PAINS, etc.)
+from modules.assay_interference_filter import (
+    get_all_interference_flags,
+    check_pains_violations,
+    check_aggregator_risk,
+    check_redox_reactive,
+    check_fluorescence_interference,
+    check_thiol_reactive,
+    get_detailed_interference_report,
+    calculate_assay_quality_score,
+)
+
+# Chemical Classifier
+from modules.chemical_classifier import (
+    get_complete_classification,
+    get_classyfire_classification,
+    get_npclassifier_classification,
+    classify_compound_type,
+)
+
+# IMP Classifier
+from modules.imp_classifier import (
+    classify_imp_candidates,
+)
+
+__all__ = [
+    # API Client
+    "get_molecule_data",
+    "get_classification",
+    "get_chembl_ids",
+    "fetch_compound_activities",
+    "batch_fetch_activities",
+    "get_target_name",
+    "get_drug_indications",
+    "clear_caches",
+    "get_cache_info",
+    # Efficiency Metrics
+    "calculate_sei",
+    "calculate_bei",
+    "calculate_nsei",
+    "calculate_nbei",
+    "calculate_all_efficiency_metrics",
+    "calculate_efficiency_metrics_dataframe",
+    # Efficiency Planes
+    "calculate_modulus",
+    "calculate_angle",
+    "calculate_all_plane_metrics",
+    "calculate_plane_metrics_dataframe",
+    "find_best_in_class",
+    # Outlier Detection
+    "detect_efficiency_outliers",
+    "calculate_cohort_statistics",
+    "get_outlier_summary",
+    "calculate_z_scores",
+    "filter_outliers",
+    # O[Q/P/L]A Scoring
+    "calculate_oqpla_phase1",
+    "calculate_oqpla_phase2",
+    "interpret_oqpla_score",
+    "add_oqpla_interpretation",
+    "get_oqpla_summary",
+    "create_pdb_summary",
+    "create_detailed_pdb_summary",
+    # Configuration
+    "ACTIVITY_TYPES",
+    "CACHE_SIZE",
+    "MAX_BATCH_SIZE",
+    "MAX_WORKERS",
+    # Assay Interference Filter
+    "get_all_interference_flags",
+    "check_pains_violations",
+    "check_aggregator_risk",
+    "check_redox_reactive",
+    "check_fluorescence_interference",
+    "check_thiol_reactive",
+    "get_detailed_interference_report",
+    "calculate_assay_quality_score",
+    # Chemical Classifier
+    "get_complete_classification",
+    "get_classyfire_classification",
+    "get_npclassifier_classification",
+    "classify_compound_type",
+    # IMP Classifier
+    "classify_imp_candidates",
+]

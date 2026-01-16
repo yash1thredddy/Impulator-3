@@ -1,40 +1,48 @@
-pylanche
-tests/
-analysis_results/
-
-# Local metadata CSV
-compounds_metadata.csv
-
-# Streamlit secrets (contains Azure credentials)
-.streamlit/secrets.toml
-
-# Python cache
+# Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
 .Python
-
-# Virtual environments
 venv/
 .venv/
 env/
-ENV/
+.env
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
+
+# Data
+data/
+*.db
+*.sqlite
+
+# Logs
+*.log
+logs/
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 
 # OS
 .DS_Store
 Thumbs.db
+nul
 
-# Logs
-*.log
+# Claude Code temp files
+tmpclaude-*
 
-# Temp files
-*.tmp
-.cache/
+# Results/uploads (large files)
+results/
+uploads/
+*.zip
